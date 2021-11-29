@@ -33,12 +33,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dgraph-io/ristretto/z"
 
 	"github.com/dgraph-io/badger/v3/options"
 	"github.com/dgraph-io/badger/v3/pb"
 	"github.com/dgraph-io/badger/v3/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 // summary is produced when DB is closed. Currently it is used only for testing.
@@ -961,8 +963,9 @@ func TestIterateParallel(t *testing.T) {
 			txns = append(txns, txn)
 		}
 		for _, txn := range txns {
-			txn.CommitWith(func(err error) {
+			txn.CommitWith(func(ts uint64, err error) {
 				y.Check(err)
+				assert.NotEqual(t, uint64(0), ts)
 				wg.Done()
 			})
 		}
@@ -1135,7 +1138,7 @@ func TestSetIfAbsentAsync(t *testing.T) {
 		return []byte(fmt.Sprintf("%09d", i))
 	}
 
-	f := func(err error) {}
+	f := func(ts uint64, err error) {}
 
 	n := 1000
 	for i := 0; i < n; i++ {

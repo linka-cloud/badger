@@ -26,8 +26,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/dgraph-io/badger/v3/y"
 
 	"github.com/stretchr/testify/require"
 )
@@ -151,7 +153,7 @@ func TestTxnCommitAsync(t *testing.T) {
 					require.NoError(t, err)
 				}
 				// We are only doing writes, so there won't be any conflicts.
-				txn.CommitWith(func(err error) {})
+				txn.CommitWith(func(ts uint64, err error) {})
 				txn.Discard()
 				wg.Done()
 			}()
@@ -892,12 +894,13 @@ func TestConflict(t *testing.T) {
 			// Unset the error.
 			err = nil
 			require.NoError(t, txn.Set(key, []byte("AA")))
-			txn.CommitWith(func(err error) {
+			txn.CommitWith(func(ts uint64, err error) {
 				if err == nil {
 					require.LessOrEqual(t, uint32(1), atomic.AddUint32(&setCount, 1))
+					assert.NotEqual(t, uint64(0), ts)
 				} else {
-
 					require.Error(t, err, ErrConflict)
+					assert.Equal(t, uint64(0), ts)
 				}
 			})
 		}
@@ -919,11 +922,12 @@ func TestConflict(t *testing.T) {
 
 		if !found {
 			require.NoError(t, txn.Set(key, []byte("AA")))
-			txn.CommitWith(func(err error) {
+			txn.CommitWith(func(ts uint64, err error) {
 				if err == nil {
 					require.LessOrEqual(t, atomic.AddUint32(&setCount, 1), uint32(1))
 				} else {
 					require.Error(t, err, ErrConflict)
+					assert.Equal(t, uint64(0), ts)
 				}
 			})
 		}

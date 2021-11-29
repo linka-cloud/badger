@@ -26,9 +26,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
+
+	"github.com/dgraph-io/badger/v3/y"
 )
 
 type oracle struct {
@@ -528,7 +529,7 @@ func (txn *Txn) Discard() {
 	}
 }
 
-func (txn *Txn) commitAndSend() (func() error, error) {
+func (txn *Txn) commitAndSend() (func() (uint64, error), error) {
 	orc := txn.db.orc
 	// Ensure that the order in which we get the commit timestamp is the same as
 	// the order in which we push these updates to the write channel. So, we
@@ -605,13 +606,13 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 		orc.doneCommit(commitTs)
 		return nil, err
 	}
-	ret := func() error {
+	ret := func() (uint64, error) {
 		err := req.Wait()
 		// Wait before marking commitTs as done.
 		// We can't defer doneCommit above, because it is being called from a
 		// callback here.
 		orc.doneCommit(commitTs)
-		return err
+		return commitTs, err
 	}
 	return ret, nil
 }
@@ -676,12 +677,13 @@ func (txn *Txn) Commit() error {
 
 	// TODO: What if some of the txns successfully make it to value log, but others fail.
 	// Nothing gets updated to LSM, until a restart happens.
-	return txnCb()
+	_, err = txnCb()
+	return err
 }
 
 type txnCb struct {
-	commit func() error
-	user   func(error)
+	commit func() (uint64, error)
+	user   func(uint64, error)
 	err    error
 }
 
@@ -692,12 +694,16 @@ func runTxnCallback(cb *txnCb) {
 	case cb.user == nil:
 		panic("Must have caught a nil callback for txn.CommitWith")
 	case cb.err != nil:
-		cb.user(cb.err)
+		cb.user(0, cb.err)
 	case cb.commit != nil:
-		err := cb.commit()
-		cb.user(err)
+		ts, err := cb.commit()
+		if err != nil {
+			cb.user(0, err)
+		} else {
+			cb.user(ts, nil)
+		}
 	default:
-		cb.user(nil)
+		cb.user(0, nil)
 	}
 }
 
@@ -705,7 +711,7 @@ func runTxnCallback(cb *txnCb) {
 // goroutine to avoid blocking this function. The callback is guaranteed to run,
 // so it is safe to increment sync.WaitGroup before calling CommitWith, and
 // decrementing it in the callback; to block until all callbacks are run.
-func (txn *Txn) CommitWith(cb func(error)) {
+func (txn *Txn) CommitWith(cb func(uint64, error)) {
 	if cb == nil {
 		panic("Nil callback provided to CommitWith")
 	}
@@ -720,7 +726,7 @@ func (txn *Txn) CommitWith(cb func(error)) {
 
 	// Precheck before discarding txn.
 	if err := txn.commitPrecheck(); err != nil {
-		cb(err)
+		cb(0, err)
 		return
 	}
 

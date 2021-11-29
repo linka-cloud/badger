@@ -74,7 +74,9 @@ func (txn *Txn) CommitAt(commitTs uint64, callback func(error)) error {
 	if callback == nil {
 		return txn.Commit()
 	}
-	txn.CommitWith(callback)
+	txn.CommitWith(func(u uint64, err error) {
+		callback(err)
+	})
 	return nil
 }
 

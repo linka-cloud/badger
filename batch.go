@@ -20,10 +20,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
+
+	"github.com/dgraph-io/badger/v3/pb"
+	"github.com/dgraph-io/badger/v3/y"
 )
 
 // WriteBatch holds the necessary info to perform batched writes.
@@ -84,7 +85,7 @@ func (wb *WriteBatch) Cancel() {
 	wb.txn.Discard()
 }
 
-func (wb *WriteBatch) callback(err error) {
+func (wb *WriteBatch) callback(ts uint64, err error) {
 	// sync.WaitGroup is thread-safe, so it doesn't need to be run inside wb.Lock.
 	defer wb.throttle.Done(err)
 	if err == nil {
