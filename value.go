@@ -34,8 +34,9 @@ import (
 	"github.com/pkg/errors"
 	otrace "go.opencensus.io/trace"
 
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/z"
+
+	"github.com/dgraph-io/badger/v4/y"
 )
 
 // maxVlogFileSize is the maximum size of the vlog file which can be created. Vlog Offset is of
@@ -667,6 +668,10 @@ func (vlog *valueLog) sortedFids() []uint32 {
 		return ret[i] < ret[j]
 	})
 	return ret
+}
+
+type waiter interface {
+	Wait() error
 }
 
 type request struct {

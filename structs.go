@@ -21,6 +21,9 @@ import (
 	"fmt"
 	"time"
 	"unsafe"
+
+	"github.com/dgraph-io/badger/v4/pb"
+	"github.com/dgraph-io/badger/v4/y"
 )
 
 type valuePointer struct {
@@ -223,4 +226,15 @@ func (e *Entry) WithTTL(dur time.Duration) *Entry {
 func (e *Entry) withMergeBit() *Entry {
 	e.meta = bitMergeEntry
 	return e
+}
+
+func (e *Entry) kv() *pb.KV {
+	return &pb.KV{
+		Key:       y.Copy(e.Key),
+		Value:     y.Copy(e.Value),
+		UserMeta:  y.Copy([]byte{e.UserMeta}),
+		Version:   e.version,
+		ExpiresAt: e.ExpiresAt,
+		Meta:      y.Copy([]byte{e.meta}),
+	}
 }

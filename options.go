@@ -26,10 +26,11 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 // Note: If you add a new option X make sure you also add a WithX method on Options.
@@ -129,6 +130,8 @@ type Options struct {
 	maxBatchSize  int64 // max batch size in bytes
 
 	maxValueThreshold float64
+
+	RaftOptions *RaftOptions
 }
 
 // DefaultOptions sets a list of recommended options for good performance.
@@ -791,6 +794,11 @@ func (opt Options) WithNamespaceOffset(offset int) Options {
 // The DB would fail to start if either the internal or the external magic number fails validated.
 func (opt Options) WithExternalMagic(magic uint16) Options {
 	opt.ExternalMagicVersion = magic
+	return opt
+}
+
+func (opt Options) WithRaft(opts *RaftOptions) Options {
+	opt.RaftOptions = opts
 	return opt
 }
 

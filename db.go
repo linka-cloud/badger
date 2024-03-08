@@ -33,14 +33,16 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+
+	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/z"
 
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/skl"
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 var (
@@ -126,6 +128,8 @@ type DB struct {
 	blockCache *ristretto.Cache
 	indexCache *ristretto.Cache
 	allocPool  *z.AllocatorPool
+
+	raft *raftNode
 }
 
 const (
@@ -180,6 +184,7 @@ func checkAndSetOptions(opt *Options) error {
 	if needCache && opt.BlockCacheSize == 0 {
 		panic("BlockCacheSize should be set since compression/encryption are enabled")
 	}
+
 	return nil
 }
 
@@ -253,6 +258,11 @@ func Open(opt Options) (*DB, error) {
 		allocPool:        z.NewAllocatorPool(8),
 		bannedNamespaces: &lockedKeys{keys: make(map[uint64]struct{})},
 		threshold:        initVlogThreshold(&opt),
+	}
+
+	db.raft, err = opt.RaftOptions.newNode(db)
+	if err != nil {
+		return nil, err
 	}
 
 	db.syncChan = opt.syncChan
@@ -399,6 +409,9 @@ func Open(opt Options) (*DB, error) {
 	valueDirLockGuard = nil
 	dirLockGuard = nil
 	manifestFile = nil
+
+	db.raft.start()
+
 	return db, nil
 }
 
@@ -528,7 +541,7 @@ func (db *DB) IndexCacheMetrics() *ristretto.Metrics {
 func (db *DB) Close() error {
 	var err error
 	db.closeOnce.Do(func() {
-		err = db.close()
+		err = multierr.Combine(db.raft.close(), db.close())
 	})
 	return err
 }
@@ -890,7 +903,7 @@ func (db *DB) writeRequests(reqs []*request) error {
 	return nil
 }
 
-func (db *DB) sendToWriteCh(entries []*Entry) (*request, error) {
+func (db *DB) sendToWriteCh(entries []*Entry, replicated ...bool) (waiter, error) {
 	if db.blockWrites.Load() == 1 {
 		return nil, ErrBlockedWrites
 	}
@@ -902,6 +915,10 @@ func (db *DB) sendToWriteCh(entries []*Entry) (*request, error) {
 	y.NumBytesWrittenUserAdd(db.opt.MetricsEnabled, size)
 	if count >= db.opt.maxBatchCount || size >= db.opt.maxBatchSize {
 		return nil, ErrTxnTooBig
+	}
+
+	if len(replicated) > 0 && replicated[0] {
+		return db.raft.propose(entries)
 	}
 
 	// We can only service one request because we need each txn to be stored in a contigous section.
@@ -1863,7 +1880,7 @@ func (db *DB) BanNamespace(ns uint64) error {
 		Key:   key,
 		Value: nil,
 	}}
-	req, err := db.sendToWriteCh(entry)
+	req, err := db.sendToWriteCh(entry, db.raft.enabled())
 	if err != nil {
 		return err
 	}

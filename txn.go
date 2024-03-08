@@ -28,8 +28,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/z"
+
+	"github.com/dgraph-io/badger/v4/y"
 )
 
 type oracle struct {
@@ -601,7 +602,7 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 		entries = append(entries, e)
 	}
 
-	req, err := txn.db.sendToWriteCh(entries)
+	req, err := txn.db.sendToWriteCh(entries, txn.db.raft.enabled())
 	if err != nil {
 		orc.doneCommit(commitTs)
 		return nil, err
@@ -769,7 +770,10 @@ func (db *DB) NewTransaction(update bool) *Txn {
 	return db.newTransaction(update, false)
 }
 
-func (db *DB) newTransaction(update, isManaged bool) *Txn {
+func (db *DB) newTransaction(update, isManaged bool, local ...bool) *Txn {
+	if (len(local) == 0 || !local[0]) && db.raft.enabled() {
+		db.raft.linearizableRead()
+	}
 	if db.opt.ReadOnly && update {
 		// DB is read-only, force read-only transaction.
 		update = false

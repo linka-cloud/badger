@@ -26,9 +26,10 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 const batchSize = 16 << 20 // 16 MB
@@ -170,9 +171,9 @@ func (st *Stream) produceKVs(ctx context.Context, threadId int) error {
 
 	var txn *Txn
 	if st.readTs > 0 {
-		txn = st.db.NewTransactionAt(st.readTs, false)
+		txn = st.db.newTransactionAt(st.readTs, false, true)
 	} else {
-		txn = st.db.NewTransaction(false)
+		txn = st.db.newTransaction(false, false, true)
 	}
 	defer txn.Discard()
 
