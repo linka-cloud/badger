@@ -771,7 +771,7 @@ func (db *DB) NewTransaction(update bool) *Txn {
 }
 
 func (db *DB) newTransaction(update, isManaged bool, local ...bool) *Txn {
-	if (len(local) == 0 || !local[0]) && db.raft.enabled() {
+	if !first(local) && db.raft.enabled() {
 		db.raft.linearizableRead()
 	}
 	if db.opt.ReadOnly && update {

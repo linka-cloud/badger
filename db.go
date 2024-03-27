@@ -917,7 +917,7 @@ func (db *DB) sendToWriteCh(entries []*Entry, replicated ...bool) (waiter, error
 		return nil, ErrTxnTooBig
 	}
 
-	if len(replicated) > 0 && replicated[0] {
+	if first(replicated) {
 		return db.raft.propose(entries)
 	}
 

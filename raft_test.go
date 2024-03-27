@@ -15,12 +15,12 @@ import (
 func TestRaft(t *testing.T) {
 	state := filepath.Join(os.TempDir(), "badger-raft/state")
 	data := filepath.Join(os.TempDir(), "badger-raft/data")
-	_ = data
+	data = ""
 	require.NoError(t, os.MkdirAll(state, 0o700))
 	t.Logf("state: %q", state)
 
 	ready := make(chan struct{})
-	db, err := Open(DefaultOptions("").
+	db, err := Open(DefaultOptions(data).
 		WithInMemory(true).
 		WithLogger(defaultLogger(INFO)).
 		WithRaft(DefaultRaftOptions.
@@ -66,7 +66,7 @@ func TestRaft(t *testing.T) {
 	}))
 
 	t.Logf("start inserting at %d", start+1)
-	count := 1_000
+	count := 10_000
 	repeat := 2_000
 	errs := make(chan error, repeat)
 	for i := 0; i < repeat; i++ {

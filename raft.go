@@ -3,11 +3,13 @@ package badger
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/dgraph-io/ristretto/z"
 	"github.com/klauspost/compress/zstd"
 	"github.com/shaj13/raft"
 	"go.uber.org/multierr"
@@ -19,20 +21,20 @@ import (
 )
 
 type wait struct {
-	sync.WaitGroup
+	wg  sync.WaitGroup
 	err error
 }
 
 func (w *wait) Wait() error {
-	w.WaitGroup.Wait()
+	w.wg.Wait()
 	return w.err
 }
 
 func waitFor(fn func() error) waiter {
 	w := &wait{}
-	w.Add(1)
+	w.wg.Add(1)
 	go func() {
-		defer w.Done()
+		defer w.wg.Done()
 		w.err = fn()
 	}()
 	return w
@@ -41,13 +43,13 @@ func waitFor(fn func() error) waiter {
 var _ raft.StateMachine = (*raftNode)(nil)
 
 type raftNode struct {
-	db    *DB
-	node  *raft.Node
-	lis   net.Listener
-	srv   *grpc.Server
-	ch    chan raft.StateType
-	smu   sync.Mutex
-	ready chan struct{}
+	db   *DB
+	node *raft.Node
+	lis  net.Listener
+	srv  *grpc.Server
+	sch  chan raft.StateType
+	smu  sync.Mutex
+	rch  chan struct{}
 }
 
 func (n *raftNode) start() {
@@ -55,7 +57,7 @@ func (n *raftNode) start() {
 		return
 	}
 	go n.run()
-	<-n.ready
+	<-n.rch
 	n.db.opt.Infof("raft: ready")
 }
 
@@ -63,21 +65,26 @@ func (n *raftNode) run() {
 	if n == nil {
 		return
 	}
-	defer n.db.Close()
+	clean := func() {
+		if !n.ready() {
+			close(n.rch)
+		}
+		n.db.Close()
+	}
+	defer clean()
 
 	maybeNotifyReady := func() {
-		select {
-		case <-n.ready:
-		default:
+		if !n.ready() {
 			go func() {
 				n.linearizableRead()
-				close(n.ready)
+				close(n.rch)
 			}()
 		}
 	}
 
 	g := errgroup.Group{}
 	g.Go(func() error {
+		defer clean()
 		if err := n.srv.Serve(n.lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			n.db.opt.Errorf("raft/gRPC failed to serve: %v", err)
 			return err
@@ -86,7 +93,8 @@ func (n *raftNode) run() {
 		return nil
 	})
 	g.Go(func() error {
-		defer close(n.ch)
+		defer clean()
+		defer close(n.sch)
 		if err := n.node.Start(n.db.opt.RaftOptions.StartOptions...); err != nil && !errors.Is(err, raft.ErrNodeStopped) {
 			n.db.opt.Errorf("raft/Node failed to start: %v", err)
 			return err
@@ -95,7 +103,8 @@ func (n *raftNode) run() {
 		return nil
 	})
 	g.Go(func() error {
-		for s := range n.ch {
+		defer clean()
+		for s := range n.sch {
 			maybeNotifyReady()
 			if n.db.opt.RaftOptions.StateChange != nil {
 				n.db.opt.RaftOptions.StateChange(s)
@@ -153,28 +162,18 @@ func (n *raftNode) Apply(bytes []byte) error {
 func (n *raftNode) applyKVs(kvs *pb.KVList) error {
 	n.db.opt.Debugf("raft: Applying %d bytes", len(kvs.Kv))
 
-	// TODO(adphi): maybe use KVLoader
-	var (
-		entries []*Entry
-		version uint64
-	)
+	var version uint64
+	entries := make([]*Entry, len(kvs.Kv))
 
-	for _, v := range kvs.Kv {
-		var userMeta, meta byte
-		if len(v.UserMeta) > 0 {
-			userMeta = v.UserMeta[0]
-		}
-		if len(v.Meta) > 0 {
-			meta = v.Meta[0]
-		}
-		entries = append(entries, &Entry{
+	for i, v := range kvs.Kv {
+		userMeta, meta := first(v.UserMeta), first(v.Meta)
+		entries[i] = &Entry{
 			Key:       y.KeyWithTs(v.Key, v.Version),
 			Value:     v.Value,
 			ExpiresAt: v.ExpiresAt,
 			UserMeta:  userMeta,
 			meta:      meta,
-		})
-		// only one version ?
+		}
 		if v.Version > version {
 			version = v.Version
 		}
@@ -191,15 +190,11 @@ func (n *raftNode) applyKVs(kvs *pb.KVList) error {
 		return err
 	}
 
-	select {
-	case <-n.ready:
+	if n.ready() && (n.leader() || n.db.opt.managedTxns) {
 		// skip when this is a transaction, which can occur only
 		// when raft is ready and this node is the current leader
-		if n.leader() || n.db.opt.managedTxns {
-			n.db.opt.Debugf("raft: skipping oracle update (version: %d)", version)
-			return nil
-		}
-	default:
+		n.db.opt.Debugf("raft: skipping oracle update (version: %d)", version)
+		return nil
 	}
 
 	if v := n.db.orc.nextTs(); v > version {
@@ -218,37 +213,47 @@ func (n *raftNode) applyKVs(kvs *pb.KVList) error {
 }
 
 func (n *raftNode) Snapshot() (io.ReadCloser, error) {
-	select {
-	case <-n.ready:
-	default:
-		return nil, errors.New("raft node not ready")
+	if !n.ready() {
+		return nil, fmt.Errorf("%w: raft node not ready", raft.ErrFailedPrecondition)
 	}
 	n.smu.Lock()
 	n.db.opt.Infof("raft: creating snapshot")
 	readTs := n.db.MaxVersion()
 	r, w := io.Pipe()
 	start := time.Now()
-	e, err := zstd.NewWriter(w)
+	e, err := zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(n.db.opt.ZSTDCompressionLevel)))
 	if err != nil {
 		return nil, err
 	}
-	n.db.stopCompactions()
 	go func() {
 		defer n.smu.Unlock()
 		defer w.Close()
 		defer e.Close()
-		defer n.db.startCompactions()
 		n.db.opt.Infof("raft: starting snapshot stream with readTs %d", readTs)
 		stream := n.db.NewStream()
 		stream.LogPrefix = "raft/snapshot"
 		stream.SinceTs = 0
 		stream.readTs = readTs
-		v, err := stream.Backup(e, 0)
-		if err != nil {
+		stream.Send = func(buf *z.Buffer) error {
+			list, err := BufferToKVList(buf)
+			if err != nil {
+				return err
+			}
+			out := list.Kv[:0]
+			for _, kv := range list.Kv {
+				if !kv.StreamDone {
+					// Don't pick stream done changes.
+					out = append(out, kv)
+				}
+			}
+			list.Kv = out
+			return writeTo(list, e)
+		}
+		if err := stream.Orchestrate(context.Background()); err != nil {
 			n.db.opt.Errorf("raft: failed to backup: %v", err)
 			return
 		}
-		n.db.opt.Infof("raft: snapshot to %d done in %v", v, time.Since(start))
+		n.db.opt.Infof("raft: snapshot to %d done in %v", readTs, time.Since(start))
 	}()
 	return r, nil
 }
@@ -262,13 +267,13 @@ func (n *raftNode) Restore(closer io.ReadCloser) error {
 		return err
 	}
 	defer d.Close()
-	n.db.opt.Debugf("raft: dropping all")
+	n.db.opt.Infof("raft: dropping all local data")
 	// TODO(adphi): create backup before in case of something goes wrong
 	if err := n.db.DropAll(); err != nil {
 		return err
 	}
-	n.db.opt.Debugf("raft: loading snapshot")
-	if err := n.db.Load(d, 256); err != nil {
+	n.db.opt.Infof("raft: loading snapshot")
+	if err := n.db.Load(d, 16); err != nil {
 		n.db.opt.Errorf("raft: failed to load snapshot: %v", err)
 		return err
 	}
@@ -286,6 +291,18 @@ func (n *raftNode) leader() bool {
 
 func (n *raftNode) enabled() bool {
 	return n != nil
+}
+
+func (n *raftNode) ready() bool {
+	if n == nil {
+		return true
+	}
+	select {
+	case <-n.rch:
+		return true
+	default:
+		return false
+	}
 }
 
 func (n *raftNode) close() error {

@@ -112,6 +112,14 @@ func getIDMap(dir string) map[uint64]struct{} {
 	return idMap
 }
 
+func first[T any](s []T) T {
+	var z T
+	if len(s) == 0 {
+		return z
+	}
+	return s[0]
+}
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }

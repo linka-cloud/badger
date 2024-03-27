@@ -82,7 +82,7 @@ func (o *RaftOptions) newNode(db *DB) (*raftNode, error) {
 		raftgrpc.WithDialOptions(o.DialOptions...),
 	)
 
-	n := &raftNode{db: db, ch: ch, ready: make(chan struct{})}
+	n := &raftNode{db: db, sch: ch, rch: make(chan struct{})}
 	n.node = raft.NewNode(n, transport.GRPC, opts...)
 
 	var err error
