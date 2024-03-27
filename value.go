@@ -34,8 +34,9 @@ import (
 	"github.com/pkg/errors"
 	otrace "go.opencensus.io/trace"
 
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/z"
+
+	"github.com/dgraph-io/badger/v4/y"
 )
 
 // maxVlogFileSize is the maximum size of the vlog file which can be created. Vlog Offset is of
@@ -1048,6 +1049,9 @@ func discardEntry(e Entry, vs y.ValueStruct, db *DB) bool {
 		return true
 	}
 	if isDeletedOrExpired(vs.Meta, vs.ExpiresAt) {
+		return true
+	}
+	if db.isIgnoredTs(vs.Version) {
 		return true
 	}
 	if (vs.Meta & bitValuePointer) == 0 {

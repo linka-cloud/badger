@@ -25,9 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 type prefetchStatus uint8
@@ -636,8 +637,8 @@ func (it *Iterator) parseItem() bool {
 
 	// Skip any versions which are beyond the readTs.
 	version := y.ParseTs(key)
-	// Ignore everything that is above the readTs and below or at the sinceTs.
-	if version > it.readTs || (it.opt.SinceTs > 0 && version <= it.opt.SinceTs) {
+	// Ignore everything that is above the readTs and below or at the sinceTs and also ignore ignored timestamps
+	if version > it.readTs || (it.opt.SinceTs > 0 && version <= it.opt.SinceTs) || (!isInternalKey && it.txn.db.isIgnoredTs(version)) {
 		mi.Next()
 		return false
 	}

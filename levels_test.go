@@ -1036,7 +1036,7 @@ func TestKeyVersions(t *testing.T) {
 					require.NoError(t, writer.Set([]byte(fmt.Sprintf("%05d", i)), []byte("foo")))
 				}
 				require.NoError(t, writer.Flush())
-				require.Equal(t, 11, len(db.Ranges(nil, 10000)))
+				require.Equal(t, 12, len(db.Ranges(nil, 10000)))
 			})
 		})
 		t.Run("prefix", func(t *testing.T) {

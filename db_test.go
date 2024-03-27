@@ -32,12 +32,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dgraph-io/ristretto/z"
 
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 // waitForMessage(ch, expected, count, timeout, t) will block until either
@@ -2604,6 +2606,152 @@ func TestBannedAtZeroOffset(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
+	})
+}
+
+func TestIgnoredTs(t *testing.T) {
+	opt := getTestOptions("")
+	opt.NumVersionsToKeep = 1
+	runBadgerTest(t, &opt, func(t *testing.T, db *DB) {
+		err := db.Update(func(txn *Txn) error {
+			require.NoError(t, txn.SetEntry(NewEntry([]byte("key1"), []byte("value1-0"))))
+			require.NoError(t, txn.SetEntry(NewEntry([]byte("key2"), []byte("value2-0"))))
+			return nil
+		})
+		require.NoError(t, err)
+
+		err = db.Update(func(txn *Txn) error {
+			require.NoError(t, txn.Set([]byte("key1"), []byte("value1-1")))
+			return nil
+		})
+		require.NoError(t, err)
+
+		commitTs := uint64(2)
+
+		require.NoError(t, db.addIgnoredTs(commitTs))
+		require.True(t, db.isIgnoredTs(commitTs))
+
+		err = db.View(func(txn *Txn) error {
+			item, err := txn.Get([]byte("key1"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value1-0"), getItemValue(t, item))
+
+			item, err = txn.Get([]byte("key2"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value2-0"), getItemValue(t, item))
+
+			it := txn.NewIterator(DefaultIteratorOptions)
+			defer it.Close()
+
+			for it.Rewind(); it.Valid(); it.Next() {
+				item := it.Item()
+				switch string(item.Key()) {
+				case "key1":
+					assert.Equal(t, []byte("value1-0"), getItemValue(t, item))
+				case "key2":
+					assert.Equal(t, []byte("value2-0"), getItemValue(t, item))
+				default:
+					t.Errorf("unexpected key: %s", item.Key())
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+
+		db.orc.setDiscardTs(commitTs)
+		require.NoError(t, db.Flatten(1))
+		db.startCompactions()
+
+		require.NoError(t, db.removeIgnoredTs(commitTs))
+		require.False(t, db.isIgnoredTs(commitTs))
+
+		err = db.View(func(txn *Txn) error {
+			item, err := txn.Get([]byte("key1"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value1-1"), getItemValue(t, item))
+
+			item, err = txn.Get([]byte("key2"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value2-0"), getItemValue(t, item))
+
+			it := txn.NewIterator(DefaultIteratorOptions)
+			defer it.Close()
+
+			for it.Rewind(); it.Valid(); it.Next() {
+				item := it.Item()
+				switch string(item.Key()) {
+				case "key1":
+					assert.Equal(t, []byte("value1-1"), getItemValue(t, item))
+				case "key2":
+					assert.Equal(t, []byte("value2-0"), getItemValue(t, item))
+				default:
+					t.Errorf("unexpected key: %s", item.Key())
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, db.addIgnoredTs(commitTs))
+
+		err = db.Update(func(txn *Txn) error {
+			require.NoError(t, txn.Set([]byte("key2"), []byte("value2-1")))
+			return nil
+		})
+		require.NoError(t, err)
+
+		err = db.View(func(txn *Txn) error {
+			item, err := txn.Get([]byte("key1"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value1-0"), getItemValue(t, item))
+
+			item, err = txn.Get([]byte("key2"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value2-1"), getItemValue(t, item))
+
+			it := txn.NewIterator(DefaultIteratorOptions)
+			defer it.Close()
+
+			for it.Rewind(); it.Valid(); it.Next() {
+				item := it.Item()
+				switch string(item.Key()) {
+				case "key1":
+					assert.Equal(t, []byte("value1-0"), getItemValue(t, item))
+				case "key2":
+					assert.Equal(t, []byte("value2-1"), getItemValue(t, item))
+				default:
+					t.Errorf("unexpected key: %s", item.Key())
+				}
+			}
+
+			return nil
+		})
+
+		require.NoError(t, db.addIgnoredTs(commitTs-1))
+
+		err = db.View(func(txn *Txn) error {
+			item, err := txn.Get([]byte("key1"))
+			require.Truef(t, err == ErrKeyNotFound, "error is not ErrKeyNotFound: %v", err)
+
+			item, err = txn.Get([]byte("key2"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("value2-1"), getItemValue(t, item))
+
+			it := txn.NewIterator(DefaultIteratorOptions)
+			defer it.Close()
+
+			for it.Rewind(); it.Valid(); it.Next() {
+				item := it.Item()
+				switch string(item.Key()) {
+				case "key2":
+					assert.Equal(t, []byte("value2-1"), getItemValue(t, item))
+				default:
+					t.Errorf("unexpected key: %s", item.Key())
+				}
+			}
+			return nil
+		})
+
 	})
 }
 

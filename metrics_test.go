@@ -198,6 +198,6 @@ func TestReadMetrics(t *testing.T) {
 		iter.Seek(keys[0])
 
 		rangeQueries := expvar.Get("badger_iterator_num_user")
-		require.Equal(t, int64(1), rangeQueries.(*expvar.Int).Value())
+		require.Equal(t, int64(2), rangeQueries.(*expvar.Int).Value())
 	})
 }

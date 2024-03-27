@@ -22,9 +22,10 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 // WriteBatch holds the necessary info to perform batched writes.
@@ -37,6 +38,8 @@ type WriteBatch struct {
 
 	isManaged bool
 	commitTs  uint64
+	commitTss []uint64
+	cmu       sync.Mutex
 	finished  bool
 }
 
@@ -85,11 +88,19 @@ func (wb *WriteBatch) Cancel() {
 	wb.txn.Discard()
 }
 
-func (wb *WriteBatch) callback(err error) {
+func (wb *WriteBatch) callback(ts uint64, err error) {
 	// sync.WaitGroup is thread-safe, so it doesn't need to be run inside wb.Lock.
 	defer wb.throttle.Done(err)
 	if err == nil {
-		return
+		if wb.isManaged {
+			return
+		}
+		wb.cmu.Lock()
+		wb.commitTss = append(wb.commitTss, ts)
+		wb.cmu.Unlock()
+		if err = wb.db.addIgnoredTs(ts); err == nil {
+			return
+		}
 	}
 	if err := wb.Error(); err != nil {
 		return
@@ -209,7 +220,7 @@ func (wb *WriteBatch) commit() error {
 		wb.err.Store(err)
 		return err
 	}
-	wb.txn.CommitWith(wb.callback)
+	wb.txn.commitWith(wb.callback)
 	wb.txn = wb.db.newTransaction(true, wb.isManaged)
 	wb.txn.commitTs = wb.commitTs
 	return wb.Error()
@@ -235,7 +246,23 @@ func (wb *WriteBatch) Flush() error {
 		return err
 	}
 
-	return wb.Error()
+	if err := wb.Error(); err != nil {
+		return err
+	}
+
+	if wb.isManaged {
+		return nil
+	}
+
+	wb.cmu.Lock()
+	defer wb.cmu.Unlock()
+	for i := range wb.commitTss {
+		// TODO(adphi): what to do here if there is an error?
+		if err := wb.txn.db.removeIgnoredTs(wb.commitTss[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Error returns any errors encountered so far. No commits would be run once an error is detected.

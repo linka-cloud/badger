@@ -34,19 +34,21 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 
+	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/skl"
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 var (
-	badgerPrefix = []byte("!badger!")       // Prefix for internal keys used by badger.
-	txnKey       = []byte("!badger!txn")    // For indicating end of entries in txn.
-	bannedNsKey  = []byte("!badger!banned") // For storing the banned namespaces.
+	badgerPrefix = []byte("!badger!")        // Prefix for internal keys used by badger.
+	txnKey       = []byte("!badger!txn")     // For indicating end of entries in txn.
+	bannedNsKey  = []byte("!badger!banned")  // For storing the banned namespaces.
+	ignoredTsKey = []byte("!badger!ignored") // For storing the ignored timestamps.
 )
 
 type closers struct {
@@ -75,6 +77,12 @@ func (lk *lockedKeys) has(key uint64) bool {
 	defer lk.RUnlock()
 	_, ok := lk.keys[key]
 	return ok
+}
+
+func (lk *lockedKeys) remove(key uint64) {
+	lk.Lock()
+	defer lk.Unlock()
+	delete(lk.keys, key)
 }
 
 func (lk *lockedKeys) all() []uint64 {
@@ -119,6 +127,7 @@ type DB struct {
 
 	orc              *oracle
 	bannedNamespaces *lockedKeys
+	ignoredTs        *lockedKeys
 	threshold        *vlogThreshold
 
 	pub        *publisher
@@ -252,6 +261,7 @@ func Open(opt Options) (*DB, error) {
 		pub:              newPublisher(),
 		allocPool:        z.NewAllocatorPool(8),
 		bannedNamespaces: &lockedKeys{keys: make(map[uint64]struct{})},
+		ignoredTs:        &lockedKeys{keys: make(map[uint64]struct{})},
 		threshold:        initVlogThreshold(&opt),
 	}
 
@@ -385,6 +395,10 @@ func Open(opt Options) (*DB, error) {
 		return db, errors.Wrapf(err, "While setting banned keys")
 	}
 
+	if err := db.initIgnoredTs(); err != nil {
+		return db, errors.Wrapf(err, "While setting ignored timestamps")
+	}
+
 	db.closers.writes = z.NewCloser(1)
 	go db.doWrites(db.closers.writes)
 
@@ -417,6 +431,22 @@ func (db *DB) initBannedNamespaces() error {
 		for itr.Rewind(); itr.Valid(); itr.Next() {
 			key := y.BytesToU64(itr.Item().Key()[len(bannedNsKey):])
 			db.bannedNamespaces.add(key)
+		}
+		return nil
+	})
+}
+
+func (db *DB) initIgnoredTs() error {
+	return db.View(func(txn *Txn) error {
+		iopts := DefaultIteratorOptions
+		iopts.Prefix = ignoredTsKey
+		iopts.PrefetchValues = false
+		iopts.InternalAccess = true
+		itr := txn.NewIterator(iopts)
+		defer itr.Close()
+		for itr.Rewind(); itr.Valid(); itr.Next() {
+			key := y.BytesToU64(itr.Item().Key()[len(ignoredTsKey):])
+			db.ignoredTs.add(key)
 		}
 		return nil
 	})
@@ -768,10 +798,16 @@ func (db *DB) get(key []byte) (y.ValueStruct, error) {
 
 	y.NumGetsAdd(db.opt.MetricsEnabled, 1)
 	for i := 0; i < len(tables); i++ {
+	lookup:
 		vs := tables[i].sl.Get(key)
 		y.NumMemtableGetsAdd(db.opt.MetricsEnabled, 1)
 		if vs.Meta == 0 && vs.Value == nil {
 			continue
+		}
+		if version > 0 && db.isIgnoredTs(vs.Version) {
+			version--
+			key = y.KeyWithTs(y.ParseKey(key), version)
+			goto lookup
 		}
 		// Found the required version of the key, return immediately.
 		if vs.Version == version {
@@ -1877,6 +1913,83 @@ func (db *DB) BanNamespace(ns uint64) error {
 // BannedNamespaces returns the list of prefixes banned for DB.
 func (db *DB) BannedNamespaces() []uint64 {
 	return db.bannedNamespaces.all()
+}
+
+// isIgnoredTs checks if the given timestamp is ignored.
+func (db *DB) isIgnoredTs(ts uint64) bool {
+	return db.ignoredTs.has(ts)
+}
+
+// AddIgnoredTs adds the given timestamp to the list of ignored timestamps.
+// Ignored timestamps are not readable by transactions.
+// AddIgnoredTs is can be used only in the managed mode.
+func (db *DB) AddIgnoredTs(ts uint64) error {
+	if !db.opt.managedTxns {
+		panic("Cannot use AddIgnoredTs with managedDB=false.")
+	}
+	return db.addIgnoredTs(ts)
+}
+
+func (db *DB) addIgnoredTs(ts uint64) error {
+	if db.ignoredTs.has(ts) {
+		return nil
+	}
+	// First set the ignored timestamp in DB and then update the in-memory structure.
+	key := y.KeyWithTs(append(ignoredTsKey, y.U64ToBytes(ts)...), 1)
+	entry := []*Entry{{
+		Key:   key,
+		Value: nil,
+	}}
+	req, err := db.sendToWriteCh(entry)
+	if err != nil {
+		return err
+	}
+	if err := req.Wait(); err != nil {
+		return err
+	}
+	db.ignoredTs.add(ts)
+	return nil
+}
+
+// RemoveIgnoredTs removes the given timestamp from the list of ignored timestamps.
+// It makes the entries at the given timestamp readable by transactions.
+// RemoveIgnoredTs is can be used only in the managed mode.
+func (db *DB) RemoveIgnoredTs(ts uint64) error {
+	if !db.opt.managedTxns {
+		panic("Cannot use RemoveIgnoredTs with managedDB=false.")
+	}
+	return db.removeIgnoredTs(ts)
+}
+
+func (db *DB) removeIgnoredTs(ts uint64) error {
+	if !db.ignoredTs.has(ts) {
+		return nil
+	}
+	// First set the ignored timestamp in DB and then update the in-memory structure.
+	key := y.KeyWithTs(append(ignoredTsKey, y.U64ToBytes(ts)...), 1)
+	entry := []*Entry{{
+		Key:   key,
+		Value: nil,
+		meta:  bitDelete,
+	}}
+	req, err := db.sendToWriteCh(entry)
+	if err != nil {
+		return err
+	}
+	if err := req.Wait(); err != nil {
+		return err
+	}
+	db.ignoredTs.remove(ts)
+	return nil
+}
+
+// IgnoredTs returns the list of all the currently ignored timestamps.
+// IgnoredTs is can be used only in the managed mode.
+func (db *DB) IgnoredTs() []uint64 {
+	if !db.opt.managedTxns {
+		panic("Cannot use IgnoredTs with managedDB=false.")
+	}
+	return db.ignoredTs.all()
 }
 
 // KVList contains a list of key-value pairs.

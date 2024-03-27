@@ -33,10 +33,11 @@ import (
 	"github.com/pkg/errors"
 	otrace "go.opencensus.io/trace"
 
+	"github.com/dgraph-io/ristretto/z"
+
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/badger/v4/y"
-	"github.com/dgraph-io/ristretto/z"
 )
 
 type levelsController struct {
@@ -752,6 +753,8 @@ func (s *levelsController) subcompact(it y.Iterator, kr keyRange, cd compactDef,
 
 			vs := it.Value()
 			version := y.ParseTs(it.Key())
+
+			// TODO(adphi): check for ignored versions
 
 			isExpired := isDeletedOrExpired(vs.Meta, vs.ExpiresAt)
 
