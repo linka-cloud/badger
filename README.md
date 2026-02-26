@@ -1,7 +1,7 @@
 # BadgerDB 
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/dgraph-io/badger/v3.svg)](https://pkg.go.dev/github.com/dgraph-io/badger/v3) 
-[![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/badger/v3)](https://goreportcard.com/report/github.com/dgraph-io/badger/v3) 
+[![Go Reference](https://pkg.go.dev/badge/go.linka.cloud/badger/v3.svg)](https://pkg.go.dev/go.linka.cloud/badger/v3) 
+[![Go Report Card](https://goreportcard.com/badge/go.linka.cloud/badger/v3)](https://goreportcard.com/report/go.linka.cloud/badger/v3) 
 [![Sourcegraph](https://sourcegraph.com/github.com/dgraph-io/badger/-/badge.svg)](https://sourcegraph.com/github.com/dgraph-io/badger?badge)
 [![ci-badger-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml)
 [![ci-badger-bank-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml)
@@ -62,7 +62,7 @@ For more details on our version naming schema please read [Choosing a version](#
 To start using Badger, install Go 1.12 or above. Badger v3 needs go modules. From your project, run the following command
 
 ```sh
-$ go get github.com/dgraph-io/badger/v3
+$ go get go.linka.cloud/badger/v3
 ```
 This will retrieve the library.
 

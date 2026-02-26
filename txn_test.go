@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
+	"go.linka.cloud/badger/v3/y"
 
 	"github.com/stretchr/testify/require"
 )

@@ -34,13 +34,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/options"
+	"go.linka.cloud/badger/v3/options"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func TestTruncateVlogWithClose(t *testing.T) {
@@ -657,12 +657,17 @@ func TestL0GCBug(t *testing.T) {
 //
 // The test has 3 steps
 // Step 1 - Create badger data. It is necessary that the value size is
-//          greater than valuethreshold. The value log file size after
-//          this step is around 170 bytes.
+//
+//	greater than valuethreshold. The value log file size after
+//	this step is around 170 bytes.
+//
 // Step 2 - Re-open the same badger and simulate a crash. The value log file
-//          size after this crash is around 2 GB (we increase the file size to mmap it).
+//
+//	size after this crash is around 2 GB (we increase the file size to mmap it).
+//
 // Step 3 - Re-open the same badger. We should be able to read all the data
-//          inserted in the first step.
+//
+//	inserted in the first step.
 func TestWindowsDataLoss(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("The test is only for Windows.")
@@ -686,7 +691,7 @@ func TestWindowsDataLoss(t *testing.T) {
 			v := []byte("barValuebarValuebarValuebarValuebarValue")
 			require.Greater(t, len(v), db.valueThreshold())
 
-			//32 bytes length and now it's not working
+			// 32 bytes length and now it's not working
 			err := txn.Set(key, v)
 			require.NoError(t, err)
 			keyList = append(keyList, key)
@@ -995,7 +1000,7 @@ func TestKeyCount(t *testing.T) {
 		}()
 
 		write := func(kvs *pb.KVList) error {
-			buf := z.NewBuffer(1 << 20, "test")
+			buf := z.NewBuffer(1<<20, "test")
 			defer buf.Release()
 
 			for _, kv := range kvs.Kv {

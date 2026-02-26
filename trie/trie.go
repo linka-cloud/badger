@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/pkg/errors"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type node struct {

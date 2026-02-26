@@ -1,4 +1,4 @@
-module github.com/dgraph-io/badger/v3
+module go.linka.cloud/badger/v3
 
 go 1.12
 

@@ -22,11 +22,11 @@ import (
 	"math"
 	"os"
 
-	"github.com/dgraph-io/badger/v3"
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"go.linka.cloud/badger/v3"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/y"
 )
 
 var streamCmd = &cobra.Command{

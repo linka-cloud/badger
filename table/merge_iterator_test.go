@@ -20,8 +20,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type SimpleIterator struct {

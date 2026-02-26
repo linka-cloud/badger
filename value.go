@@ -32,9 +32,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
+	"go.linka.cloud/badger/v3/y"
 	otrace "go.opencensus.io/trace"
 )
 

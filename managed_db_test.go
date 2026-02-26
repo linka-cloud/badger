@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func val(large bool) []byte {

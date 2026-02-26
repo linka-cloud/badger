@@ -29,12 +29,12 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/dgraph-io/badger/v3"
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
 	humanize "github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
+	"go.linka.cloud/badger/v3"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type flagOptions struct {

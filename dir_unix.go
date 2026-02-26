@@ -1,3 +1,4 @@
+//go:build !windows && !plan9
 // +build !windows,!plan9
 
 /*
@@ -24,7 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/y"
 	"golang.org/x/sys/unix"
 )
 

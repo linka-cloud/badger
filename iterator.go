@@ -26,10 +26,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/table"
 	"github.com/dgraph-io/ristretto/z"
+	"go.linka.cloud/badger/v3/table"
 
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type prefetchStatus uint8

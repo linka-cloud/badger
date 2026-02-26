@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // MergeOperator represents a Badger merge operator.

@@ -21,8 +21,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type levelHandler struct {

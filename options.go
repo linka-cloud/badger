@@ -27,9 +27,9 @@ import (
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
 
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // Note: If you add a new option X make sure you also add a WithX method on Options.
@@ -472,7 +472,8 @@ func (opt Options) WithBaseTableSize(val int64) Options {
 //
 // LevelSizeMultiplier sets the ratio between the maximum sizes of contiguous levels in the LSM.
 // Once a level grows to be larger than this ratio allowed, the compaction process will be
-//  triggered.
+//
+//	triggered.
 //
 // The default value of LevelSizeMultiplier is 10.
 func (opt Options) WithLevelSizeMultiplier(val int) Options {
@@ -510,7 +511,7 @@ func (opt Options) WithValueThreshold(val int64) Options {
 // and only 1 percent in vlog. The value threshold will be dynamically updated within the range of
 // [ValueThreshold, Options.maxValueThreshold]
 //
-// Say VLogPercentile with 1.0 means threshold will eventually set to Options.maxValueThreshold
+// # Say VLogPercentile with 1.0 means threshold will eventually set to Options.maxValueThreshold
 //
 // The default value of VLogPercentile is 0.0.
 func (opt Options) WithVLogPercentile(t float64) Options {

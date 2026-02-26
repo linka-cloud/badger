@@ -23,8 +23,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // discardStats keeps track of the amount of data that could be discarded for

@@ -35,10 +35,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // summary is produced when DB is closed. Currently it is used only for testing.

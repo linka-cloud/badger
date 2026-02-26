@@ -25,11 +25,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v3/fb"
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto"
+	"go.linka.cloud/badger/v3/fb"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func TestTableIndex(t *testing.T) {

@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 const (
@@ -46,7 +46,7 @@ var sanityText = []byte("Hello Badger")
 type KeyRegistry struct {
 	sync.RWMutex
 	dataKeys    map[uint64]*pb.DataKey
-	lastCreated int64 //lastCreated is the timestamp(seconds) of the last data key generated.
+	lastCreated int64 // lastCreated is the timestamp(seconds) of the last data key generated.
 	nextKeyID   uint64
 	fp          *os.File
 	opt         KeyRegistryOptions

@@ -30,11 +30,11 @@ import (
 
 	otrace "go.opencensus.io/trace"
 
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func TestManifestBasic(t *testing.T) {

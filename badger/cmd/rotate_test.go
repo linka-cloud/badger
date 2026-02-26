@@ -22,9 +22,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dgraph-io/badger/v3"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func TestRotate(t *testing.T) {

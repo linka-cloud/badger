@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v3/pb"
+	"go.linka.cloud/badger/v3/pb"
 )
 
 // This test will result in deadlock for commits before this.
@@ -39,7 +39,6 @@ func TestPublisherDeadlock(t *testing.T) {
 
 		var firstUpdate sync.WaitGroup
 		firstUpdate.Add(1)
-
 
 		var subDone sync.WaitGroup
 		subDone.Add(1)
@@ -61,7 +60,7 @@ func TestPublisherDeadlock(t *testing.T) {
 				return txn.SetEntry(e)
 			})
 			require.NoError(t, err)
-		} ()
+		}()
 
 		firstUpdate.Wait()
 		req := int64(0)

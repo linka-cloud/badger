@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/pb"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/pb"
 )
 
 func BenchmarkBuffer(b *testing.B) {

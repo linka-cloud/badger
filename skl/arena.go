@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/y"
 )
 
 const (

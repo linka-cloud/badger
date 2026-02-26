@@ -22,8 +22,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/dgraph-io/badger/v3/fb"
-	"github.com/dgraph-io/badger/v3/y"
+	"go.linka.cloud/badger/v3/fb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 type blockIterator struct {

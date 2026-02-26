@@ -25,11 +25,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v3/options"
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/table"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/options"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/table"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // createAndOpen creates a table with the given data and adds it to the given level.

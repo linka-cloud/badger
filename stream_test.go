@@ -25,12 +25,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	bpb "github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v3/pb"
+	bpb "go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/y"
 )
 
 func keyWithPrefix(prefix string, k int) []byte {

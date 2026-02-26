@@ -22,9 +22,9 @@ import (
 	_ "net/http/pprof"
 	"runtime"
 
-	"github.com/dgraph-io/badger/v3/badger/cmd"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/dustin/go-humanize"
+	"go.linka.cloud/badger/v3/badger/cmd"
 	"go.opencensus.io/zpages"
 )
 

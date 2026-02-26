@@ -34,11 +34,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/skl"
-	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"github.com/pkg/errors"
+	"go.linka.cloud/badger/v3/pb"
+	"go.linka.cloud/badger/v3/skl"
+	"go.linka.cloud/badger/v3/y"
 )
 
 // memTable structure stores a skiplist and a corresponding WAL. Writes to memTable are written
