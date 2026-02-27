@@ -125,4 +125,12 @@ var (
 
 	// ErrDBClosed is returned when a get operation is performed after closing the DB.
 	ErrDBClosed = errors.New("DB Closed")
+
+	// ErrTxnCommitInDoubt is returned when Badger cannot confirm whether a
+	// transaction committed after durability marker write.
+	ErrTxnCommitInDoubt = errors.New("Transaction commit outcome in doubt")
+
+	// ErrWALModeMismatch is returned when the requested WAL mode differs from
+	// the one stored on disk.
+	ErrWALModeMismatch = errors.New("WAL mode mismatch")
 )

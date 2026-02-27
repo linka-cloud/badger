@@ -109,6 +109,14 @@ type Options struct {
 	// conflict detection is disabled.
 	DetectConflicts bool
 
+	// EnableWAL switches transaction intent persistence from memtable WAL files
+	// to a dedicated append-only write-ahead log.
+	EnableWAL bool
+
+	// AllowWALModeSwitch allows opening a DB with a different WAL mode than the
+	// one persisted on disk. This is intended for explicit migrations only.
+	AllowWALModeSwitch bool
+
 	// NamespaceOffset specifies the offset from where the next 8 bytes contains the namespace.
 	NamespaceOffset int
 
@@ -186,6 +194,8 @@ func DefaultOptions(path string) Options {
 		EncryptionKey:                 []byte{},
 		EncryptionKeyRotationDuration: 10 * 24 * time.Hour, // Default 10 days.
 		DetectConflicts:               true,
+		EnableWAL:                     false,
+		AllowWALModeSwitch:            false,
 		NamespaceOffset:               -1,
 	}
 }
@@ -772,6 +782,19 @@ func (opt Options) WithIndexCacheSize(size int64) Options {
 // The default value of Detect conflicts is True.
 func (opt Options) WithDetectConflicts(b bool) Options {
 	opt.DetectConflicts = b
+	return opt
+}
+
+// WithWAL returns a new Options value with EnableWAL set to the given value.
+func (opt Options) WithWAL(b bool) Options {
+	opt.EnableWAL = b
+	return opt
+}
+
+// WithAllowWALModeSwitch allows opening with a WAL mode different from the
+// mode persisted in WAL-MODE marker file.
+func (opt Options) WithAllowWALModeSwitch(b bool) Options {
+	opt.AllowWALModeSwitch = b
 	return opt
 }
 

@@ -773,6 +773,10 @@ func TestWriteBatchDuplicate(t *testing.T) {
 }
 
 func TestZeroDiscardStats(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("discard-stats test depends on vlog internals (memwal mode)")
+	}
+
 	N := uint64(10000)
 	populate := func(t *testing.T, db *DB) {
 		writer := db.NewWriteBatch()

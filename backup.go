@@ -90,8 +90,8 @@ func (stream *Stream) Backup(w io.Writer, since uint64) (uint64, error) {
 				}
 			}
 
-			// clear txn bits
-			meta := item.meta &^ (bitTxn | bitFinTxn)
+			// clear non-portable/internal bits before writing backup stream.
+			meta := item.meta &^ (bitTxn | bitFinTxn | bitValuePointer | bitWALPointer)
 			kv := y.NewKV(a)
 			*kv = pb.KV{
 				Key:       a.Copy(item.Key()),
