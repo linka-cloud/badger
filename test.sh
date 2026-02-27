@@ -18,7 +18,7 @@ fi
 # export packages because the test will run in a sub process.
 export packages=$(go list ./... | grep "github.com/dgraph-io/badger/v4/")
 
-tags="-tags=jemalloc"
+# tags="-tags=jemalloc"
 
 # Compile the Badger binary
 pushd badger
@@ -65,6 +65,32 @@ manual() {
 	echo "==> DONE manual tests"
 }
 
+wal() {
+  timeout="-timeout 2m"
+  echo "==> Running WAL-mode package tests for $packages"
+  set -e
+  for pkg in $packages; do
+    echo "===> Testing WAL mode $pkg"
+    BADGER_TEST_WAL=1 go test $tags -timeout=25m $covermode $coverprofile -race -parallel 16 $pkg && write_coverage
+  done
+  echo "==> DONE WAL-mode package tests"
+
+  echo "==> Running WAL-mode root tests"
+  BADGER_TEST_WAL=1 go test $tags -v -race -parallel=16 -timeout=25m $covermode $coverprofile . && write_coverage
+  echo "==> DONE WAL-mode root tests"
+
+  echo "==> Running WAL-mode manual tests"
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestBigKeyValuePairs$' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestPushValueLogLimit' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestKeyCount' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestIteratePrefix' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestIterateParallel' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestBigStream' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestGoroutineLeak' --manual=true && write_coverage || return 1
+  BADGER_TEST_WAL=1 go test $tags $timeout $covermode $coverprofile -failfast -run='TestGetMore' --manual=true && write_coverage || return 1
+  echo "==> DONE WAL-mode manual tests"
+}
+
 root() {
 	# Run the normal tests.
 	# go test -timeout=25m -v -race github.com/dgraph-io/badger/v4/...
@@ -103,9 +129,33 @@ write_coverage() {
 
 }
 
+# if we have a specified test, run it and exit
+if [ -n "$1" ]; then
+  case "$1" in
+    wal)
+      wal
+      ;;
+    root)
+      root
+      ;;
+    stream)
+      stream
+      ;;
+    manual)
+      manual
+      ;;
+    *)
+      echo "Unknown test: $1"
+      exit 1
+      ;;
+  esac
+  exit 0
+fi
+
 # parallel tests currently not working
 # parallel --halt now,fail=1 --progress --line-buffer ::: stream manual root
 # run tests in sequence
+wal
 root
 stream
 manual

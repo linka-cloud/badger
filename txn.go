@@ -260,9 +260,10 @@ type Txn struct {
 }
 
 type txnWalRef struct {
-	mt  *memTable
-	vp  valuePointer
-	val []byte
+	mt      *memTable
+	vp      valuePointer
+	val     []byte
+	fromWAL bool
 }
 
 var txnIntentPrefix = append(append([]byte{}, badgerPrefix...), []byte("txn-intent")...)
@@ -327,6 +328,13 @@ func encodeTxnCommitValue(commitTs, txnID uint64) []byte {
 	out[0] = 1
 	binary.BigEndian.PutUint64(out[1:], commitTs)
 	binary.BigEndian.PutUint64(out[9:], txnID)
+	return out
+}
+
+func buildTxnCommitKey(txnID uint64) []byte {
+	out := make([]byte, len(txnKey)+8)
+	copy(out, txnKey)
+	binary.BigEndian.PutUint64(out[len(txnKey):], txnID)
 	return out
 }
 
@@ -668,13 +676,23 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 	}
 
 	buildEntry := func(w *txnWrite) *Entry {
-		val := txn.db.readTxnValue(w.ref)
+		var val []byte
+		var walPtr valuePointer
+		meta := w.meta | bitTxnIntent
+		if w.ref.fromWAL {
+			val = txn.db.readTxnValue(w.ref)
+			walPtr = w.ref.vp
+			meta |= bitWALPointer
+		} else {
+			val = txn.db.readTxnValue(w.ref)
+		}
 		e := &Entry{
 			Key:       y.KeyWithTs(w.key, w.version),
 			Value:     val,
 			UserMeta:  w.userMeta,
 			ExpiresAt: w.expiresAt,
-			meta:      w.meta | bitTxnIntent,
+			meta:      meta,
+			walPtr:    walPtr,
 		}
 		if keepTogether {
 			e.meta |= bitTxn
@@ -693,6 +711,7 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 	batch := make([]*Entry, 0, countLimit)
 	var batchSize int64
 	var reqs []*request
+	walEnabled := txn.db.opt.EnableWAL && !txn.db.opt.InMemory
 	flushBatch := func() error {
 		if len(batch) == 0 {
 			return nil
@@ -725,15 +744,32 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 	// var b strings.Builder
 	// fmt.Fprintf(&b, "Read: %d. Commit: %d. reads: %v. writes: %v. Keys: ",
 	// 	txn.readTs, commitTs, txn.reads, txn.conflictKeys)
+	if walEnabled {
+		if txn.db.blockWrites.Load() == 1 {
+			orc.doneCommit(commitTs)
+			return nil, ErrBlockedWrites
+		}
+	}
+	if err := txn.db.appendTxnCommit(txn.txnID, commitTs); err != nil {
+		orc.doneCommit(commitTs)
+		return nil, err
+	}
+
 	for _, e := range txn.pendingWrites {
 		if err := appendEntry(buildEntry(e)); err != nil {
 			orc.doneCommit(commitTs)
+			if walEnabled {
+				return nil, ErrTxnCommitInDoubt
+			}
 			return nil, err
 		}
 	}
 	for _, e := range txn.duplicateWrites {
 		if err := appendEntry(buildEntry(e)); err != nil {
 			orc.doneCommit(commitTs)
+			if walEnabled {
+				return nil, ErrTxnCommitInDoubt
+			}
 			return nil, err
 		}
 	}
@@ -744,13 +780,20 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 		meta:  bitFinTxn,
 	}); err != nil {
 		orc.doneCommit(commitTs)
+		if walEnabled {
+			return nil, ErrTxnCommitInDoubt
+		}
 		return nil, err
 	}
 
 	if err := flushBatch(); err != nil {
 		orc.doneCommit(commitTs)
+		if walEnabled {
+			return nil, ErrTxnCommitInDoubt
+		}
 		return nil, err
 	}
+
 	ret := func() error {
 		var err error
 		for _, req := range reqs {

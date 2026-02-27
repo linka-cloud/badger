@@ -229,6 +229,7 @@ func (s *levelsController) dropTree() (int, error) {
 	if err := s.kv.manifest.addChanges(changeSet.Changes, s.kv.opt); err != nil {
 		return 0, err
 	}
+	s.kv.noteManifestDurable()
 
 	// Now that manifest has been successfully written, we can delete the tables.
 	for _, l := range s.levels {
@@ -655,7 +656,7 @@ func (s *levelsController) subcompact(it y.Iterator, kr keyRange, cd compactDef,
 		if s.kv.opt.InMemory {
 			return
 		}
-		if vs.Meta&bitValuePointer > 0 {
+		if vs.Meta&bitValuePointer > 0 && vs.Meta&bitWALPointer == 0 {
 			var vp valuePointer
 			vp.Decode(vs.Value)
 			discardStats[vp.Fid] += int64(vp.Len)
@@ -860,7 +861,9 @@ func (s *levelsController) subcompact(it y.Iterator, kr keyRange, cd compactDef,
 			res <- tbl
 		}(builder, s.reserveFileID())
 	}
-	s.kv.vlog.updateDiscardStats(discardStats)
+	if !s.kv.opt.EnableWAL {
+		s.kv.vlog.updateDiscardStats(discardStats)
+	}
 	s.kv.opt.Debugf("Discard stats: %v", discardStats)
 }
 
@@ -1440,6 +1443,7 @@ func (s *levelsController) runCompactDef(id, l int, cd compactDef) (err error) {
 	if err := s.kv.manifest.addChanges(changeSet.Changes, s.kv.opt); err != nil {
 		return err
 	}
+	s.kv.noteManifestDurable()
 
 	getSizes := func(tables []*table.Table) int64 {
 		size := int64(0)
@@ -1570,6 +1574,7 @@ func (s *levelsController) addLevel0Table(t *table.Table) error {
 		if err != nil {
 			return err
 		}
+		s.kv.noteManifestDurable()
 	}
 
 	for !s.levels[0].tryAddLevel0Table(t) {

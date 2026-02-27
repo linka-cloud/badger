@@ -46,6 +46,9 @@ func (db *DB) openMemTables(opt Options) error {
 	if db.opt.InMemory {
 		return nil
 	}
+	if db.opt.EnableWAL {
+		return nil
+	}
 	files, err := os.ReadDir(db.opt.Dir)
 	if err != nil {
 		return errFile(err, db.opt.Dir, "Unable to open mem dir.")
@@ -104,7 +107,7 @@ func (db *DB) openMemTable(fid, flags int) (*memTable, error) {
 		buf: &bytes.Buffer{},
 	}
 	// We don't need to create the wal for the skiplist in in-memory mode so return the mt.
-	if db.opt.InMemory {
+	if db.opt.InMemory || db.opt.EnableWAL {
 		return mt, z.NewFile
 	}
 
@@ -156,6 +159,9 @@ func (db *DB) mtFilePath(fid int) string {
 }
 
 func (mt *memTable) SyncWAL() error {
+	if mt.wal == nil {
+		return nil
+	}
 	return mt.wal.Sync()
 }
 
@@ -165,6 +171,9 @@ func (mt *memTable) isFull() bool {
 	}
 	if mt.opt.InMemory {
 		// InMemory mode doesn't have any WAL.
+		return false
+	}
+	if mt.wal == nil {
 		return false
 	}
 	mt.walLock.Lock()
@@ -181,12 +190,16 @@ func (mt *memTable) Put(key []byte, value y.ValueStruct) error {
 		ExpiresAt: value.ExpiresAt,
 	}
 
-	// wal is nil only when badger in running in in-memory mode and we don't need the wal.
-	if _, err := mt.appendToWal(entry); err != nil {
-		if err == errNoRoom {
-			return err
+	writeWal := !mt.opt.EnableWAL
+
+	if writeWal {
+		// wal is nil only when badger in running in in-memory mode and we don't need the wal.
+		if _, err := mt.appendToWal(entry); err != nil {
+			if err == errNoRoom {
+				return err
+			}
+			return y.Wrapf(err, "cannot write entry to WAL file")
 		}
-		return y.Wrapf(err, "cannot write entry to WAL file")
 	}
 	// We insert the finish marker in the WAL but not in the memtable.
 	if entry.meta&bitFinTxn > 0 {
@@ -495,7 +508,11 @@ func (lf *logFile) iterate(readOnly bool, offset uint32, fn logEntry) (uint32, e
 
 	var entries []*Entry
 	var vptrs []valuePointer
-	intentEntries := make(map[uint64][]*Entry)
+	type intentRec struct {
+		e  *Entry
+		vp valuePointer
+	}
+	intentEntries := make(map[uint64][]intentRec)
 
 loop:
 	for {
@@ -533,7 +550,7 @@ loop:
 			if !ok {
 				break loop
 			}
-			intentEntries[txnID] = append(intentEntries[txnID], intent)
+			intentEntries[txnID] = append(intentEntries[txnID], intentRec{e: intent, vp: vp})
 			validEndOffset = read.recordOffset
 
 		case e.meta&bitTxn > 0:
@@ -554,7 +571,8 @@ loop:
 			}
 			if txnID > 0 {
 				pending := intentEntries[txnID]
-				for _, ie := range pending {
+				for _, rec := range pending {
+					ie := rec.e
 					ts := ie.version
 					if ts == 0 {
 						ts = txnTs
@@ -563,7 +581,7 @@ loop:
 						continue
 					}
 					ie.Key = y.KeyWithTs(ie.Key, ts)
-					if err := fn(*ie, valuePointer{}); err != nil {
+					if err := fn(*ie, rec.vp); err != nil {
 						if err == errStop {
 							break
 						}

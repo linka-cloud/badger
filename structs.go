@@ -138,6 +138,7 @@ type Entry struct {
 	// Fields maintained internally.
 	hlen         int // Length of the header.
 	valThreshold int64
+	walPtr       valuePointer
 }
 
 func (e *Entry) isZero() bool {
