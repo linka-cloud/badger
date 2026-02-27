@@ -163,3 +163,66 @@ func TestMultiplePrefix(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+func TestPublishLargeTransaction(t *testing.T) {
+	runBadgerTest(t, nil, func(t *testing.T, db *DB) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		prefix := []byte("pub-large-")
+		n := int(db.MaxBatchCount()) + 256
+
+		expected := make(map[string]string, n)
+		for i := 0; i < n; i++ {
+			k := fmt.Sprintf("pub-large-%08d", i)
+			expected[k] = fmt.Sprintf("value-%08d", i)
+		}
+
+		got := make(map[string]string, n)
+		var mu sync.Mutex
+		done := make(chan struct{})
+		closed := false
+
+		match := pb.Match{Prefix: prefix, IgnoreBytes: ""}
+		go func() {
+			err := db.Subscribe(ctx, func(kvs *pb.KVList) error {
+				mu.Lock()
+				defer mu.Unlock()
+				for _, kv := range kvs.GetKv() {
+					got[string(kv.GetKey())] = string(kv.GetValue())
+				}
+				if len(got) == n && !closed {
+					closed = true
+					close(done)
+				}
+				return nil
+			}, []pb.Match{match})
+			if err != nil {
+				require.Equal(t, context.Canceled.Error(), err.Error())
+			}
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+		txn := db.NewTransaction(true)
+		for i := 0; i < n; i++ {
+			k := fmt.Sprintf("pub-large-%08d", i)
+			v := fmt.Sprintf("value-%08d", i)
+			require.NoError(t, txn.SetEntry(NewEntry([]byte(k), []byte(v))))
+		}
+		require.NoError(t, txn.Commit())
+
+		select {
+		case <-done:
+		case <-time.After(20 * time.Second):
+			t.Fatalf("timed out waiting for %d published entries, got %d", n, len(got))
+		}
+
+		cancel()
+		mu.Lock()
+		defer mu.Unlock()
+		require.Equal(t, len(expected), len(got))
+		for k, v := range expected {
+			require.Equal(t, v, got[k])
+		}
+	})
+}

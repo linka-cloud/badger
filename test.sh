@@ -5,7 +5,7 @@ set -eo pipefail
 go version
 
 # Check if Github Actions is running
-if [ $CI = "true" ]; then
+if [ "$CI" = "true" ]; then
   # Enable code coverage
   # export because tests run in a subprocess
   export covermode="-covermode=atomic"
@@ -18,7 +18,7 @@ fi
 # export packages because the test will run in a sub process.
 export packages=$(go list ./... | grep "go.linka.cloud/badger/v3/")
 
-tags="-tags=jemalloc"
+# tags="-tags=jemalloc"
 
 # Compile the Badger binary
 pushd badger
@@ -94,7 +94,7 @@ stream() {
 }
 
 write_coverage() {
-  if [ $CI = "true" ]; then
+  if [ "$CI" = "true" ]; then
     if [ -f cover_tmp.out ]; then
       sed -i '1d' cover_tmp.out
       cat cover_tmp.out >> cover.out && rm cover_tmp.out

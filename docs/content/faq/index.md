@@ -34,17 +34,33 @@ Are you creating a new transaction for every single key update, and waiting for
 it to `Commit` fully before creating a new one? This will lead to very low
 throughput.
 
-We have created `WriteBatch` API which provides a way to batch up
-many updates into a single transaction and `Commit` that transaction using
-callbacks to avoid blocking. This amortizes the cost of a transaction really
-well, and provides the most efficient way to do bulk writes.
+For most workloads, prefer the `Transaction` API. Badger transactions now
+support large writes, so you can keep a transaction open, add many entries, and
+commit once.
+
+Use `WriteBatch` when you need fire-and-forget style ingestion with bounded
+pending commits and no reads in the write path.
+
+```go
+err := db.Update(func(txn *badger.Txn) error {
+  for i := 0; i < N; i++ {
+    if err := txn.SetEntry(badger.NewEntry(key(i), value(i))); err != nil {
+      return err
+    }
+  }
+  return nil
+})
+handle(err)
+```
+
+`WriteBatch` remains useful for asynchronous bulk loading:
 
 ```go
 wb := db.NewWriteBatch()
 defer wb.Cancel()
 
 for i := 0; i < N; i++ {
-  err := wb.Set(key(i), value(i), 0) // Will create txns as needed.
+  err := wb.Set(key(i), value(i)) // Will rotate internal txns as needed.
   handle(err)
 }
 handle(wb.Flush()) // Wait for all txns to finish.
@@ -130,4 +146,3 @@ deleting the old badger directory.
 Badger does not directly use CGO but it relies on https://github.com/DataDog/zstd library for
 zstd compression and the library requires `gcc/cgo`. You can build badger without cgo by running
 `CGO_ENABLED=0 go build`. This will build badger without the support for ZSTD compression algorithm.
-

@@ -19,6 +19,7 @@ package badger
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"math"
 	"sort"
@@ -249,8 +250,8 @@ func (o *oracle) doneCommit(cts uint64) {
 type Txn struct {
 	readTs   uint64
 	commitTs uint64
-	size     int64
-	count    int64
+	txnID    uint64
+	seq      uint64
 	db       *DB
 
 	reads []uint64 // contains fingerprints of keys read.
@@ -258,8 +259,9 @@ type Txn struct {
 	conflictKeys map[uint64]struct{}
 	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
 
-	pendingWrites   map[string]*Entry // cache stores any writes done by txn.
-	duplicateWrites []*Entry          // Used in managed mode to store duplicate entries.
+	pendingWrites   map[string]*txnWrite
+	duplicateWrites []*txnWrite
+	pinnedMts       map[*memTable]uint32
 
 	numIterators int32
 	discarded    bool
@@ -267,11 +269,103 @@ type Txn struct {
 	update       bool // update is used to conditionally keep track of reads.
 }
 
+type txnWalRef struct {
+	mt  *memTable
+	vp  valuePointer
+	val []byte
+}
+
+var txnIntentPrefix = append(append([]byte{}, badgerPrefix...), []byte("txn-intent")...)
+
+func buildTxnIntentKey(txnID, seq uint64) []byte {
+	out := make([]byte, len(txnIntentPrefix)+16)
+	copy(out, txnIntentPrefix)
+	binary.BigEndian.PutUint64(out[len(txnIntentPrefix):], txnID)
+	binary.BigEndian.PutUint64(out[len(txnIntentPrefix)+8:], seq)
+	return out
+}
+
+func parseTxnIntentKey(key []byte) (uint64, bool) {
+	if len(key) != len(txnIntentPrefix)+16 {
+		return 0, false
+	}
+	if !bytes.Equal(key[:len(txnIntentPrefix)], txnIntentPrefix) {
+		return 0, false
+	}
+	return binary.BigEndian.Uint64(key[len(txnIntentPrefix):]), true
+}
+
+func encodeTxnIntentValue(e *Entry) []byte {
+	klen := len(e.Key)
+	vlen := len(e.Value)
+	out := make([]byte, 2+8+8+4+4+klen+vlen)
+	out[0] = e.meta
+	out[1] = e.UserMeta
+	binary.BigEndian.PutUint64(out[2:], e.ExpiresAt)
+	binary.BigEndian.PutUint64(out[10:], e.version)
+	binary.BigEndian.PutUint32(out[18:], uint32(klen))
+	binary.BigEndian.PutUint32(out[22:], uint32(vlen))
+	copy(out[26:], e.Key)
+	copy(out[26+klen:], e.Value)
+	return out
+}
+
+func decodeTxnIntentValue(v []byte) (*Entry, bool) {
+	if len(v) < 26 {
+		return nil, false
+	}
+	klen := binary.BigEndian.Uint32(v[18:])
+	vlen := binary.BigEndian.Uint32(v[22:])
+	need := 26 + int(klen) + int(vlen)
+	if need > len(v) {
+		return nil, false
+	}
+	start := 26
+	e := &Entry{
+		meta:      v[0],
+		UserMeta:  v[1],
+		ExpiresAt: binary.BigEndian.Uint64(v[2:]),
+		version:   binary.BigEndian.Uint64(v[10:]),
+		Key:       y.SafeCopy(nil, v[start:start+int(klen)]),
+		Value:     y.SafeCopy(nil, v[start+int(klen):need]),
+	}
+	return e, true
+}
+
+func encodeTxnCommitValue(commitTs, txnID uint64) []byte {
+	out := make([]byte, 17)
+	out[0] = 1
+	binary.BigEndian.PutUint64(out[1:], commitTs)
+	binary.BigEndian.PutUint64(out[9:], txnID)
+	return out
+}
+
+func decodeTxnCommitValue(v []byte) (uint64, uint64, bool) {
+	if len(v) == 17 && v[0] == 1 {
+		return binary.BigEndian.Uint64(v[1:]), binary.BigEndian.Uint64(v[9:]), true
+	}
+	commitTs, err := strconv.ParseUint(string(v), 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return commitTs, 0, true
+}
+
+type txnWrite struct {
+	key       []byte
+	meta      byte
+	userMeta  byte
+	expiresAt uint64
+	version   uint64
+	ref       txnWalRef
+}
+
 type pendingWritesIterator struct {
-	entries  []*Entry
+	entries  []*txnWrite
 	nextIdx  int
 	readTs   uint64
 	reversed bool
+	db       *DB
 }
 
 func (pi *pendingWritesIterator) Next() {
@@ -285,7 +379,7 @@ func (pi *pendingWritesIterator) Rewind() {
 func (pi *pendingWritesIterator) Seek(key []byte) {
 	key = y.ParseKey(key)
 	pi.nextIdx = sort.Search(len(pi.entries), func(idx int) bool {
-		cmp := bytes.Compare(pi.entries[idx].Key, key)
+		cmp := bytes.Compare(pi.entries[idx].key, key)
 		if !pi.reversed {
 			return cmp >= 0
 		}
@@ -296,17 +390,18 @@ func (pi *pendingWritesIterator) Seek(key []byte) {
 func (pi *pendingWritesIterator) Key() []byte {
 	y.AssertTrue(pi.Valid())
 	entry := pi.entries[pi.nextIdx]
-	return y.KeyWithTs(entry.Key, pi.readTs)
+	return y.KeyWithTs(entry.key, pi.readTs)
 }
 
 func (pi *pendingWritesIterator) Value() y.ValueStruct {
 	y.AssertTrue(pi.Valid())
 	entry := pi.entries[pi.nextIdx]
+	value := pi.db.readTxnValue(entry.ref)
 	return y.ValueStruct{
-		Value:     entry.Value,
+		Value:     value,
 		Meta:      entry.meta,
-		UserMeta:  entry.UserMeta,
-		ExpiresAt: entry.ExpiresAt,
+		UserMeta:  entry.userMeta,
+		ExpiresAt: entry.expiresAt,
 		Version:   pi.readTs,
 	}
 }
@@ -323,13 +418,13 @@ func (txn *Txn) newPendingWritesIterator(reversed bool) *pendingWritesIterator {
 	if !txn.update || len(txn.pendingWrites) == 0 {
 		return nil
 	}
-	entries := make([]*Entry, 0, len(txn.pendingWrites))
+	entries := make([]*txnWrite, 0, len(txn.pendingWrites))
 	for _, e := range txn.pendingWrites {
 		entries = append(entries, e)
 	}
-	// Number of pending writes per transaction shouldn't be too big in general.
+	// Keep writes sorted by user key for iterator semantics inside a transaction.
 	sort.Slice(entries, func(i, j int) bool {
-		cmp := bytes.Compare(entries[i].Key, entries[j].Key)
+		cmp := bytes.Compare(entries[i].key, entries[j].key)
 		if !reversed {
 			return cmp < 0
 		}
@@ -339,18 +434,8 @@ func (txn *Txn) newPendingWritesIterator(reversed bool) *pendingWritesIterator {
 		readTs:   txn.readTs,
 		entries:  entries,
 		reversed: reversed,
+		db:       txn.db,
 	}
-}
-
-func (txn *Txn) checkSize(e *Entry) error {
-	count := txn.count + 1
-	// Extra bytes for the version in key.
-	size := txn.size + e.estimateSizeAndSetThreshold(txn.db.valueThreshold()) + 10
-	if count >= txn.db.opt.maxBatchCount || size >= txn.db.opt.maxBatchSize {
-		return ErrTxnTooBig
-	}
-	txn.count, txn.size = count, size
-	return nil
 }
 
 func exceedsSize(prefix string, max int64, key []byte) error {
@@ -385,10 +470,6 @@ func (txn *Txn) modify(e *Entry) error {
 		return err
 	}
 
-	if err := txn.checkSize(e); err != nil {
-		return err
-	}
-
 	// The txn.conflictKeys is used for conflict detection. If conflict detection
 	// is disabled, we don't need to store key hashes in this map.
 	if txn.db.opt.DetectConflicts {
@@ -398,10 +479,34 @@ func (txn *Txn) modify(e *Entry) error {
 	// If a duplicate entry was inserted in managed mode, move it to the duplicate writes slice.
 	// Add the entry to duplicateWrites only if both the entries have different versions. For
 	// same versions, we will overwrite the existing entry.
-	if oldEntry, ok := txn.pendingWrites[string(e.Key)]; ok && oldEntry.version != e.version {
+	intent := &Entry{
+		Key:       buildTxnIntentKey(txn.txnID, txn.seq),
+		Value:     encodeTxnIntentValue(e),
+		UserMeta:  0,
+		ExpiresAt: 0,
+		meta:      bitTxnIntent,
+	}
+	txn.seq++
+
+	ref, err := txn.db.appendTxnIntent(intent)
+	if err != nil {
+		return err
+	}
+	txn.pinMt(ref.mt)
+
+	w := &txnWrite{
+		key:       e.Key,
+		meta:      e.meta,
+		userMeta:  e.UserMeta,
+		expiresAt: e.ExpiresAt,
+		version:   e.version,
+		ref:       ref,
+	}
+
+	if oldEntry, ok := txn.pendingWrites[string(e.Key)]; ok && oldEntry.version != w.version {
 		txn.duplicateWrites = append(txn.duplicateWrites, oldEntry)
 	}
-	txn.pendingWrites[string(e.Key)] = e
+	txn.pendingWrites[string(e.Key)] = w
 	return nil
 }
 
@@ -454,18 +559,19 @@ func (txn *Txn) Get(key []byte) (item *Item, rerr error) {
 
 	item = new(Item)
 	if txn.update {
-		if e, has := txn.pendingWrites[string(key)]; has && bytes.Equal(key, e.Key) {
-			if isDeletedOrExpired(e.meta, e.ExpiresAt) {
+		if e, has := txn.pendingWrites[string(key)]; has && bytes.Equal(key, e.key) {
+			if isDeletedOrExpired(e.meta, e.expiresAt) {
 				return nil, ErrKeyNotFound
 			}
-			// Fulfill from cache.
+			// Fulfill from transaction intent state.
+			val := txn.db.readTxnValue(e.ref)
 			item.meta = e.meta
-			item.val = e.Value
-			item.userMeta = e.UserMeta
+			item.val = val
+			item.userMeta = e.userMeta
 			item.key = key
 			item.status = prefetched
 			item.version = txn.readTs
-			item.expiresAt = e.ExpiresAt
+			item.expiresAt = e.expiresAt
 			// We probably don't need to set db on item here.
 			return item, nil
 		}
@@ -510,6 +616,13 @@ func (txn *Txn) addReadKey(key []byte) {
 	}
 }
 
+func (txn *Txn) pinMt(mt *memTable) {
+	if mt == nil {
+		return
+	}
+	txn.pinnedMts[mt]++
+}
+
 // Discard discards a created transaction. This method is very important and must be called. Commit
 // method calls this internally, however, calling this multiple times doesn't cause any issues. So,
 // this can safely be called via a defer right when transaction is created.
@@ -525,6 +638,11 @@ func (txn *Txn) Discard() {
 	txn.discarded = true
 	if !txn.db.orc.isManaged {
 		txn.db.orc.doneRead(txn)
+	}
+	for mt, cnt := range txn.pinnedMts {
+		for i := uint32(0); i < cnt; i++ {
+			mt.DecrRef()
+		}
 	}
 }
 
@@ -543,7 +661,7 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 	}
 
 	keepTogether := true
-	setVersion := func(e *Entry) {
+	setVersion := func(e *txnWrite) {
 		if e.version == 0 {
 			e.version = commitTs
 		} else {
@@ -559,21 +677,56 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 		setVersion(e)
 	}
 
-	entries := make([]*Entry, 0, len(txn.pendingWrites)+len(txn.duplicateWrites)+1)
-
-	processEntry := func(e *Entry) {
-		// Suffix the keys with commit ts, so the key versions are sorted in
-		// descending order of commit timestamp.
-		e.Key = y.KeyWithTs(e.Key, e.version)
-		// Add bitTxn only if these entries are part of a transaction. We
-		// support SetEntryAt(..) in managed mode which means a single
-		// transaction can have entries with different timestamps. If entries
-		// in a single transaction have different timestamps, we don't add the
-		// transaction markers.
+	buildEntry := func(w *txnWrite) *Entry {
+		val := txn.db.readTxnValue(w.ref)
+		e := &Entry{
+			Key:       y.KeyWithTs(w.key, w.version),
+			Value:     val,
+			UserMeta:  w.userMeta,
+			ExpiresAt: w.expiresAt,
+			meta:      w.meta | bitTxnIntent,
+		}
 		if keepTogether {
 			e.meta |= bitTxn
 		}
-		entries = append(entries, e)
+		return e
+	}
+
+	batchLimit := txn.db.opt.maxBatchSize
+	countLimit := txn.db.opt.maxBatchCount
+	if batchLimit <= 0 {
+		batchLimit = 64 << 20
+	}
+	if countLimit <= 0 {
+		countLimit = 1024
+	}
+	batch := make([]*Entry, 0, countLimit)
+	var batchSize int64
+	var reqs []*request
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		req, err := txn.db.sendToWriteCh(batch)
+		if err != nil {
+			return err
+		}
+		reqs = append(reqs, req)
+		batch = make([]*Entry, 0, countLimit)
+		batchSize = 0
+		return nil
+	}
+
+	appendEntry := func(e *Entry) error {
+		es := e.estimateSizeAndSetThreshold(txn.db.valueThreshold())
+		if len(batch) > 0 && (int64(len(batch))+1 >= countLimit || batchSize+es >= batchLimit) {
+			if err := flushBatch(); err != nil {
+				return err
+			}
+		}
+		batch = append(batch, e)
+		batchSize += es
+		return nil
 	}
 
 	// The following debug information is what led to determining the cause of
@@ -583,30 +736,38 @@ func (txn *Txn) commitAndSend() (func() error, error) {
 	// fmt.Fprintf(&b, "Read: %d. Commit: %d. reads: %v. writes: %v. Keys: ",
 	// 	txn.readTs, commitTs, txn.reads, txn.conflictKeys)
 	for _, e := range txn.pendingWrites {
-		processEntry(e)
+		if err := appendEntry(buildEntry(e)); err != nil {
+			orc.doneCommit(commitTs)
+			return nil, err
+		}
 	}
 	for _, e := range txn.duplicateWrites {
-		processEntry(e)
-	}
-
-	if keepTogether {
-		// CommitTs should not be zero if we're inserting transaction markers.
-		y.AssertTrue(commitTs != 0)
-		e := &Entry{
-			Key:   y.KeyWithTs(txnKey, commitTs),
-			Value: []byte(strconv.FormatUint(commitTs, 10)),
-			meta:  bitFinTxn,
+		if err := appendEntry(buildEntry(e)); err != nil {
+			orc.doneCommit(commitTs)
+			return nil, err
 		}
-		entries = append(entries, e)
 	}
 
-	req, err := txn.db.sendToWriteCh(entries)
-	if err != nil {
+	if err := appendEntry(&Entry{
+		Key:   y.KeyWithTs(txnKey, commitTs),
+		Value: encodeTxnCommitValue(commitTs, txn.txnID),
+		meta:  bitFinTxn,
+	}); err != nil {
+		orc.doneCommit(commitTs)
+		return nil, err
+	}
+
+	if err := flushBatch(); err != nil {
 		orc.doneCommit(commitTs)
 		return nil, err
 	}
 	ret := func() error {
-		err := req.Wait()
+		var err error
+		for _, req := range reqs {
+			if rerr := req.Wait(); err == nil {
+				err = rerr
+			}
+		}
 		// Wait before marking commitTs as done.
 		// We can't defer doneCommit above, because it is being called from a
 		// callback here.
@@ -773,14 +934,14 @@ func (db *DB) newTransaction(update, isManaged bool) *Txn {
 	txn := &Txn{
 		update: update,
 		db:     db,
-		count:  1,                       // One extra entry for BitFin.
-		size:   int64(len(txnKey) + 10), // Some buffer for the extra entry.
+		txnID:  atomic.AddUint64(&db.nextTxnID, 1),
 	}
 	if update {
 		if db.opt.DetectConflicts {
 			txn.conflictKeys = make(map[uint64]struct{})
 		}
-		txn.pendingWrites = make(map[string]*Entry)
+		txn.pendingWrites = make(map[string]*txnWrite)
+		txn.pinnedMts = make(map[*memTable]uint32)
 	}
 	if !isManaged {
 		txn.readTs = db.orc.readTs()

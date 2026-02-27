@@ -79,6 +79,7 @@ type TableManifest struct {
 type manifestFile struct {
 	fp        *os.File
 	directory string
+	version   uint32
 	// We make this configurable so that unit tests can hit rewrite() code quickly
 	deletionsRewriteThreshold int
 
@@ -144,7 +145,7 @@ func helpOpenOrCreateManifestFile(dir string, readOnly bool, deletionsThreshold 
 			return nil, Manifest{}, fmt.Errorf("no manifest found, required for read-only db")
 		}
 		m := createManifest()
-		fp, netCreations, err := helpRewrite(dir, &m)
+		fp, netCreations, err := helpRewrite(dir, &m, magicVersion)
 		if err != nil {
 			return nil, Manifest{}, err
 		}
@@ -152,13 +153,14 @@ func helpOpenOrCreateManifestFile(dir string, readOnly bool, deletionsThreshold 
 		mf := &manifestFile{
 			fp:                        fp,
 			directory:                 dir,
+			version:                   magicVersion,
 			manifest:                  m.clone(),
 			deletionsRewriteThreshold: deletionsThreshold,
 		}
 		return mf, m, nil
 	}
 
-	manifest, truncOffset, err := ReplayManifestFile(fp)
+	manifest, truncOffset, version, err := replayManifestFile(fp)
 	if err != nil {
 		_ = fp.Close()
 		return nil, Manifest{}, err
@@ -179,8 +181,18 @@ func helpOpenOrCreateManifestFile(dir string, readOnly bool, deletionsThreshold 
 	mf := &manifestFile{
 		fp:                        fp,
 		directory:                 dir,
+		version:                   version,
 		manifest:                  manifest.clone(),
 		deletionsRewriteThreshold: deletionsThreshold,
+	}
+	if !readOnly && version < magicVersion {
+		mf.appendLock.Lock()
+		err = mf.rewrite()
+		mf.appendLock.Unlock()
+		if err != nil {
+			_ = fp.Close()
+			return nil, Manifest{}, err
+		}
 	}
 	return mf, manifest, nil
 }
@@ -237,10 +249,13 @@ var syncFunc = func(f *os.File) error { return f.Sync() }
 // Has to be 4 bytes.  The value can never change, ever, anyway.
 var magicText = [4]byte{'B', 'd', 'g', 'r'}
 
-// The magic version number.
-const magicVersion = 8
+// The manifest format version written by this binary.
+const magicVersion = 9
 
-func helpRewrite(dir string, m *Manifest) (*os.File, int, error) {
+// Oldest manifest version this binary can read.
+const minMagicVersion = 8
+
+func helpRewrite(dir string, m *Manifest, version uint32) (*os.File, int, error) {
 	rewritePath := filepath.Join(dir, manifestRewriteFilename)
 	// We explicitly sync.
 	fp, err := y.OpenTruncFile(rewritePath, false)
@@ -250,7 +265,7 @@ func helpRewrite(dir string, m *Manifest) (*os.File, int, error) {
 
 	buf := make([]byte, 8)
 	copy(buf[0:4], magicText[:])
-	binary.BigEndian.PutUint32(buf[4:8], magicVersion)
+	binary.BigEndian.PutUint32(buf[4:8], version)
 
 	netCreations := len(m.Tables)
 	changes := m.asChanges()
@@ -305,11 +320,12 @@ func (mf *manifestFile) rewrite() error {
 	if err := mf.fp.Close(); err != nil {
 		return err
 	}
-	fp, netCreations, err := helpRewrite(mf.directory, &mf.manifest)
+	fp, netCreations, err := helpRewrite(mf.directory, &mf.manifest, magicVersion)
 	if err != nil {
 		return err
 	}
 	mf.fp = fp
+	mf.version = magicVersion
 	mf.manifest.Creations = netCreations
 	mf.manifest.Deletions = 0
 
@@ -346,18 +362,23 @@ var (
 // truncated at that point before further appends are made (if there is a partial entry after
 // that).  In normal conditions, truncOffset is the file size.
 func ReplayManifestFile(fp *os.File) (Manifest, int64, error) {
+	manifest, truncOffset, _, err := replayManifestFile(fp)
+	return manifest, truncOffset, err
+}
+
+func replayManifestFile(fp *os.File) (Manifest, int64, uint32, error) {
 	r := countingReader{wrapped: bufio.NewReader(fp)}
 
 	var magicBuf [8]byte
 	if _, err := io.ReadFull(&r, magicBuf[:]); err != nil {
-		return Manifest{}, 0, errBadMagic
+		return Manifest{}, 0, 0, errBadMagic
 	}
 	if !bytes.Equal(magicBuf[0:4], magicText[:]) {
-		return Manifest{}, 0, errBadMagic
+		return Manifest{}, 0, 0, errBadMagic
 	}
 	version := y.BytesToU32(magicBuf[4:8])
-	if version != magicVersion {
-		return Manifest{}, 0,
+	if version < minMagicVersion || version > magicVersion {
+		return Manifest{}, 0, 0,
 			//nolint:lll
 			fmt.Errorf("manifest has unsupported version: %d (we support %d).\n"+
 				"Please see https://github.com/dgraph-io/badger/blob/master/README.md#i-see-manifest-has-unsupported-version-x-we-support-y-error"+
@@ -367,7 +388,7 @@ func ReplayManifestFile(fp *os.File) (Manifest, int64, error) {
 
 	stat, err := fp.Stat()
 	if err != nil {
-		return Manifest{}, 0, err
+		return Manifest{}, 0, 0, err
 	}
 
 	build := createManifest()
@@ -380,12 +401,12 @@ func ReplayManifestFile(fp *os.File) (Manifest, int64, error) {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				break
 			}
-			return Manifest{}, 0, err
+			return Manifest{}, 0, 0, err
 		}
 		length := y.BytesToU32(lenCrcBuf[0:4])
 		// Sanity check to ensure we don't over-allocate memory.
 		if length > uint32(stat.Size()) {
-			return Manifest{}, 0, errors.Errorf(
+			return Manifest{}, 0, 0, errors.Errorf(
 				"Buffer length: %d greater than file size: %d. Manifest file might be corrupted",
 				length, stat.Size())
 		}
@@ -394,23 +415,23 @@ func ReplayManifestFile(fp *os.File) (Manifest, int64, error) {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				break
 			}
-			return Manifest{}, 0, err
+			return Manifest{}, 0, 0, err
 		}
 		if crc32.Checksum(buf, y.CastagnoliCrcTable) != y.BytesToU32(lenCrcBuf[4:8]) {
-			return Manifest{}, 0, errBadChecksum
+			return Manifest{}, 0, 0, errBadChecksum
 		}
 
 		var changeSet pb.ManifestChangeSet
 		if err := proto.Unmarshal(buf, &changeSet); err != nil {
-			return Manifest{}, 0, err
+			return Manifest{}, 0, 0, err
 		}
 
 		if err := applyChangeSet(&build, &changeSet); err != nil {
-			return Manifest{}, 0, err
+			return Manifest{}, 0, 0, err
 		}
 	}
 
-	return build, offset, nil
+	return build, offset, version, nil
 }
 
 func applyManifestChange(build *Manifest, tc *pb.ManifestChange) error {
