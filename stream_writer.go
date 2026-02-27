@@ -148,11 +148,17 @@ func (sw *StreamWriter) Write(buf *z.Buffer) error {
 	sw.writeLock.Lock()
 	defer sw.writeLock.Unlock()
 
-	// We are writing all requests to vlog even if some request belongs to already closed stream.
+	// We are writing all requests to WAL/vlog even if some request belongs to already closed stream.
 	// It is safe to do because we are panicking while writing to sorted writer, which will be nil
 	// for closed stream. At restart, stream writer will drop all the data in Prepare function.
-	if err := sw.db.vlog.write(all); err != nil {
-		return err
+	if sw.db.opt.EnableWAL {
+		if err := sw.db.fillWALPtrs(all); err != nil {
+			return err
+		}
+	} else {
+		if err := sw.db.vlog.write(all); err != nil {
+			return err
+		}
 	}
 
 	for streamID, req := range streamReqs {
@@ -446,6 +452,7 @@ func (w *sortedWriter) createTable(builder *table.Builder) error {
 	if err := w.db.manifest.addChanges([]*pb.ManifestChange{change}); err != nil {
 		return err
 	}
+	w.db.noteManifestDurable()
 
 	// We are not calling lhandler.replaceTables() here, as it sorts tables on every addition.
 	// We can sort all tables only once during Flush() call.

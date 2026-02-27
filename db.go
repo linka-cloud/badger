@@ -34,8 +34,9 @@ import (
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/dgraph-io/ristretto/z"
-	humanize "github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
+
 	"go.linka.cloud/badger/v3/options"
 	"go.linka.cloud/badger/v3/pb"
 	"go.linka.cloud/badger/v3/skl"
@@ -51,7 +52,88 @@ var (
 
 const (
 	maxNumSplits = 128
+	walModeFile  = "WAL-MODE"
 )
+
+const (
+	walModeMem = "memwal"
+	walModeTx  = "wal"
+)
+
+func expectedWALMode(opt Options) string {
+	if opt.EnableWAL {
+		return walModeTx
+	}
+	return walModeMem
+}
+
+func hasFilesWithExt(dir, ext string) (bool, error) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, ent := range ents {
+		if ent.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(ent.Name(), ext) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func ensureWALModeCompatibility(opt Options) error {
+	if opt.InMemory {
+		return nil
+	}
+	modePath := filepath.Join(opt.Dir, walModeFile)
+	wanted := expectedWALMode(opt)
+	hasVlog, err := hasFilesWithExt(opt.ValueDir, ".vlog")
+	if err != nil {
+		return y.Wrap(err, "while checking value log files")
+	}
+	hasMem, err := hasFilesWithExt(opt.Dir, memFileExt)
+	if err != nil {
+		return y.Wrap(err, "while checking memtable wal files")
+	}
+	hasWal, err := hasFilesWithExt(opt.ValueDir, walFileExt)
+	if err != nil {
+		return y.Wrap(err, "while checking wal files")
+	}
+	if wanted == walModeTx && hasVlog {
+		return errors.Wrap(ErrWALModeMismatch, "wal mode requires no .vlog files")
+	}
+	if wanted == walModeTx && hasMem {
+		return errors.Wrap(ErrWALModeMismatch, "wal mode requires no .mem files")
+	}
+	if wanted == walModeMem && hasWal {
+		return errors.Wrap(ErrWALModeMismatch, "memwal mode requires no .wal files")
+	}
+
+	b, err := os.ReadFile(modePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return y.Wrap(err, "while reading wal mode file")
+		}
+		if opt.ReadOnly {
+			return nil
+		}
+		return os.WriteFile(modePath, []byte(wanted+"\n"), 0600)
+	}
+
+	got := strings.TrimSpace(string(b))
+	if got == "" {
+		got = walModeMem
+	}
+	if got == wanted {
+		return nil
+	}
+	if opt.ReadOnly || !opt.AllowWALModeSwitch {
+		return errors.Wrapf(ErrWALModeMismatch, "on disk=%s requested=%s", got, wanted)
+	}
+	return os.WriteFile(modePath, []byte(wanted+"\n"), 0600)
+}
 
 type closers struct {
 	updateSize  *z.Closer
@@ -112,6 +194,7 @@ type DB struct {
 	manifest  *manifestFile
 	lc        *levelsController
 	vlog      valueLog
+	wal       wal
 	writeCh   chan *request
 	flushChan chan flushTask // For flushing memtables.
 	closeOnce sync.Once      // For closing DB only once.
@@ -317,6 +400,9 @@ func Open(opt Options) (*DB, error) {
 		// If badger is running in memory mode, push everything into the LSM Tree.
 		db.opt.ValueThreshold = math.MaxInt32
 	}
+	if err := ensureWALModeCompatibility(db.opt); err != nil {
+		return nil, err
+	}
 	krOpt := KeyRegistryOptions{
 		ReadOnly:                      opt.ReadOnly,
 		Dir:                           opt.Dir,
@@ -347,8 +433,15 @@ func Open(opt Options) (*DB, error) {
 		return db, err
 	}
 
-	// Initialize vlog struct.
-	db.vlog.init(db)
+	// Initialize vlog struct only in memwal mode.
+	if !db.opt.EnableWAL {
+		db.vlog.init(db)
+	}
+	if db.opt.EnableWAL {
+		if err := db.wal.init(db); err != nil {
+			return nil, y.Wrap(err, "while opening wal")
+		}
+	}
 
 	if !opt.ReadOnly {
 		db.closers.compactors = z.NewCloser(1)
@@ -363,13 +456,20 @@ func Open(opt Options) (*DB, error) {
 			db.flushChan <- flushTask{mt: mt}
 		}
 	}
+	if !db.opt.EnableWAL {
+		if err = db.vlog.open(db); err != nil {
+			return db, y.Wrapf(err, "During db.vlog.open")
+		}
+	}
+	if db.opt.EnableWAL {
+		if err := db.wal.replay(); err != nil {
+			return nil, y.Wrap(err, "while replaying wal")
+		}
+	}
+
 	// We do increment nextTxnTs below. So, no need to do it here.
 	db.orc.nextTxnTs = db.MaxVersion()
 	db.opt.Infof("Set nextTxnTs to %d", db.orc.nextTxnTs)
-
-	if err = db.vlog.open(db); err != nil {
-		return db, y.Wrapf(err, "During db.vlog.open")
-	}
 
 	// Let's advance nextTxnTs to one more than whatever we observed via
 	// replaying the logs.
@@ -547,7 +647,7 @@ func (db *DB) close() (err error) {
 
 	atomic.StoreInt32(&db.blockWrites, 1)
 
-	if !db.opt.InMemory {
+	if !db.opt.InMemory && !db.opt.EnableWAL {
 		// Stop value GC first.
 		db.closers.valueGC.SignalAndWait()
 	}
@@ -620,6 +720,9 @@ func (db *DB) close() (err error) {
 	if vlogErr := db.vlog.Close(); vlogErr != nil {
 		err = y.Wrap(vlogErr, "DB.Close")
 	}
+	if walErr := db.wal.Close(); err == nil {
+		err = y.Wrap(walErr, "DB.Close")
+	}
 
 	db.opt.Infof(db.LevelsToString())
 	if lcErr := db.lc.close(); err == nil {
@@ -681,7 +784,32 @@ const (
 // Sync syncs database content to disk. This function provides
 // more control to user to sync data whenever required.
 func (db *DB) Sync() error {
-	return db.vlog.sync()
+	if !db.opt.EnableWAL {
+		if err := db.vlog.sync(); err != nil {
+			return err
+		}
+	}
+	if db.opt.EnableWAL {
+		return db.wal.sync()
+	}
+	return nil
+}
+
+// WALLSN returns the latest durable and applied wal positions.
+func (db *DB) WALLSN() (durable valuePointer, applied valuePointer) {
+	if !db.opt.EnableWAL {
+		return valuePointer{}, valuePointer{}
+	}
+	return db.wal.lsn()
+}
+
+func (db *DB) noteManifestDurable() {
+	if !db.opt.EnableWAL {
+		return
+	}
+	if err := db.wal.updateManifestSafePointFromApplied(); err != nil {
+		db.opt.Warningf("unable to persist wal manifest safe point: %v", err)
+	}
 }
 
 // getMemtables returns the current memtables and get references.
@@ -778,8 +906,28 @@ func (db *DB) writeToLSM(b *request) error {
 		for {
 			fromIntent := entry.meta&bitTxnIntent > 0
 			entryMeta := entry.meta &^ bitTxnIntent
+			fromWALPointer := entryMeta&bitWALPointer > 0
 			var err error
-			if entry.skipVlogAndSetThreshold(db.valueThreshold()) {
+			if fromWALPointer {
+				ptr := entry.walPtr
+				if ptr.IsZero() {
+					ptr = b.Ptrs[i]
+				}
+				if ptr.IsZero() {
+					return errors.New("missing WAL pointer for WAL-backed entry")
+				}
+				vs := y.ValueStruct{
+					Value:     ptr.Encode(),
+					Meta:      entryMeta | bitValuePointer,
+					UserMeta:  entry.UserMeta,
+					ExpiresAt: entry.ExpiresAt,
+				}
+				if fromIntent {
+					err = mt.putSkiplistOnly(entry.Key, vs)
+				} else {
+					err = mt.Put(entry.Key, vs)
+				}
+			} else if entry.skipVlogAndSetThreshold(db.valueThreshold()) {
 				// Will include deletion / tombstone case.
 				vs := y.ValueStruct{
 					Value: entry.Value,
@@ -787,7 +935,7 @@ func (db *DB) writeToLSM(b *request) error {
 					// to be retrieved during iterator prefetch. `bitValuePointer` is only
 					// known to be set in write to LSM when the entry is loaded from a backup
 					// with lower ValueThreshold and its value was stored in the value log.
-					Meta:      entryMeta &^ bitValuePointer,
+					Meta:      entryMeta &^ (bitValuePointer | bitWALPointer),
 					UserMeta:  entry.UserMeta,
 					ExpiresAt: entry.ExpiresAt,
 				}
@@ -828,6 +976,13 @@ func (db *DB) writeToLSM(b *request) error {
 			if err != nil {
 				return y.Wrapf(err, "while writing to memTable")
 			}
+			if fromWALPointer {
+				lsn := entry.walPtr
+				if lsn.IsZero() {
+					lsn = b.Ptrs[i]
+				}
+				db.wal.markApplied(lsn)
+			}
 			break
 		}
 	}
@@ -837,7 +992,39 @@ func (db *DB) writeToLSM(b *request) error {
 	return nil
 }
 
+func (db *DB) applyWALEntries(entries []*Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	req := &request{Entries: entries}
+	if !db.opt.EnableWAL {
+		if err := db.vlog.write([]*request{req}); err != nil {
+			return err
+		}
+	} else {
+		req.Ptrs = make([]valuePointer, len(entries))
+		for i, e := range entries {
+			if e.meta&bitWALPointer > 0 && len(e.Value) == int(vptrSize) {
+				req.Ptrs[i].Decode(e.Value)
+				e.walPtr = req.Ptrs[i]
+			}
+		}
+	}
+	for err := db.ensureRoomForWrite(); err == errNoRoom; err = db.ensureRoomForWrite() {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return db.writeToLSM(req)
+}
+
 func (db *DB) appendTxnIntent(e *Entry) (txnWalRef, error) {
+	if db.opt.EnableWAL && !db.opt.InMemory {
+		vp, err := db.wal.append(e)
+		if err != nil {
+			return txnWalRef{}, err
+		}
+		return txnWalRef{vp: vp, fromWAL: true}, nil
+	}
+
 	if db.opt.InMemory {
 		return txnWalRef{val: e.Value}, nil
 	}
@@ -878,6 +1065,18 @@ func (db *DB) appendTxnIntent(e *Entry) (txnWalRef, error) {
 	}
 }
 
+func (db *DB) appendTxnCommit(txnID, commitTs uint64) error {
+	if !db.opt.EnableWAL || db.opt.InMemory {
+		return nil
+	}
+	_, err := db.wal.append(&Entry{
+		Key:   buildTxnCommitKey(txnID),
+		Value: encodeTxnCommitValue(commitTs, txnID),
+		meta:  bitFinTxn,
+	})
+	return err
+}
+
 func (db *DB) readTxnValue(ref txnWalRef) []byte {
 	decode := func(v []byte) []byte {
 		intent, ok := decodeTxnIntentValue(v)
@@ -885,6 +1084,14 @@ func (db *DB) readTxnValue(ref txnWalRef) []byte {
 			return nil
 		}
 		return y.SafeCopy(nil, intent.Value)
+	}
+
+	if ref.fromWAL {
+		val, err := db.wal.readIntentValue(ref.vp)
+		if err != nil {
+			return nil
+		}
+		return val
 	}
 
 	if ref.mt == nil {
@@ -907,6 +1114,38 @@ func (db *DB) readTxnValue(ref txnWalRef) []byte {
 	return decode(e.Value)
 }
 
+func (db *DB) fillWALPtrs(reqs []*request) error {
+	for _, r := range reqs {
+		r.Ptrs = r.Ptrs[:0]
+		for _, e := range r.Entries {
+			if e.meta&bitWALPointer > 0 {
+				if !e.walPtr.IsZero() {
+					r.Ptrs = append(r.Ptrs, e.walPtr)
+				} else if len(e.Value) == int(vptrSize) {
+					var vp valuePointer
+					vp.Decode(e.Value)
+					r.Ptrs = append(r.Ptrs, vp)
+				} else {
+					r.Ptrs = append(r.Ptrs, valuePointer{})
+				}
+				continue
+			}
+			if e.skipVlogAndSetThreshold(db.valueThreshold()) {
+				r.Ptrs = append(r.Ptrs, valuePointer{})
+				continue
+			}
+			vp, err := db.wal.append(e)
+			if err != nil {
+				return err
+			}
+			e.walPtr = vp
+			e.meta |= bitWALPointer
+			r.Ptrs = append(r.Ptrs, vp)
+		}
+	}
+	return nil
+}
+
 // writeRequests is called serially by only one goroutine.
 func (db *DB) writeRequests(reqs []*request) error {
 	if len(reqs) == 0 {
@@ -919,8 +1158,13 @@ func (db *DB) writeRequests(reqs []*request) error {
 			r.Wg.Done()
 		}
 	}
-	db.opt.Debugf("writeRequests called. Writing to value log")
-	err := db.vlog.write(reqs)
+	db.opt.Debugf("writeRequests called. Writing to wal")
+	var err error
+	if db.opt.EnableWAL {
+		err = db.fillWALPtrs(reqs)
+	} else {
+		err = db.vlog.write(reqs)
+	}
 	if err != nil {
 		done(err)
 		return err
@@ -1315,6 +1559,30 @@ func (db *DB) RunValueLogGC(discardRatio float64) error {
 
 	// Pick a log file and run GC
 	return db.vlog.runGC(discardRatio)
+}
+
+// RunWALGC triggers WAL compaction.
+//
+// WAL compaction rewrites live entries from old WAL files to the current WAL
+// head and removes obsolete segments. Similar to RunValueLogGC, only one WAL
+// GC runs at a time; concurrent calls return ErrRejected.
+//
+// If no WAL file can be compacted, ErrNoRewrite is returned.
+// discardRatio must be in range (0.0, 1.0), both endpoints excluded.
+func (db *DB) RunWALGC(discardRatio float64) error {
+	if db.opt.InMemory {
+		return ErrGCInMemoryMode
+	}
+	if discardRatio >= 1.0 || discardRatio <= 0.0 {
+		return ErrInvalidRequest
+	}
+	if !db.opt.EnableWAL {
+		return ErrInvalidRequest
+	}
+	if db.IsClosed() {
+		return ErrRejected
+	}
+	return db.wal.runGC(discardRatio)
 }
 
 // Size returns the size of lsm and value log files in bytes. It can be used to decide how often to
@@ -1807,9 +2075,17 @@ func (db *DB) dropAll() (func(), error) {
 	}
 	db.opt.Infof("Deleted %d SSTables. Now deleting value logs...\n", num)
 
-	num, err = db.vlog.dropAll()
-	if err != nil {
-		return resume, err
+	num = 0
+	if !db.opt.EnableWAL {
+		num, err = db.vlog.dropAll()
+		if err != nil {
+			return resume, err
+		}
+	}
+	if walNum, walErr := db.wal.dropAll(); walErr != nil {
+		return resume, walErr
+	} else if walNum > 0 {
+		db.opt.Infof("Deleted %d wal files.", walNum)
 	}
 	db.lc.nextFileID = 1
 	db.opt.Infof("Deleted %d value log files. DropAll done.\n", num)
@@ -1882,6 +2158,9 @@ func (db *DB) DropPrefix(prefixes ...[]byte) error {
 
 	// Drop prefixes from the levels.
 	if err := db.lc.dropPrefixes(filtered); err != nil {
+		return err
+	}
+	if err := db.wal.checkpoint(); err != nil {
 		return err
 	}
 	db.opt.Infof("DropPrefix done")

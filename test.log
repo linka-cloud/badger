@@ -1,0 +1,294 @@
+go version go1.26.0 linux/amd64
+[INFO] Async backend writer enabled
+time=2026-02-28T11:51:38.507+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+/data/linka-cloud/badger/badger /data/linka-cloud/badger
+[INFO] Async backend writer enabled
+go.linka.cloud/badger/v3/badger
+time=2026-02-28T11:51:39.457+01:00 level=INFO msg="shutting down async backend writer" startedPuts=4 successPuts=4 failedPuts=0
+time=2026-02-28T11:51:39.457+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.523ms
+time=2026-02-28T11:51:39.457+01:00 level=INFO msg="shutting down async backend writer" startedPuts=4 successPuts=4 failedPuts=0
+time=2026-02-28T11:51:39.457+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.523ms
+/data/linka-cloud/badger
+==> Running WAL-mode package tests for go.linka.cloud/badger/v3/badger
+go.linka.cloud/badger/v3/badger/cmd
+go.linka.cloud/badger/v3/badger-test-big
+go.linka.cloud/badger/v3/fb
+go.linka.cloud/badger/v3/integration/testgc
+go.linka.cloud/badger/v3/options
+go.linka.cloud/badger/v3/pb
+go.linka.cloud/badger/v3/skl
+go.linka.cloud/badger/v3/table
+go.linka.cloud/badger/v3/trie
+go.linka.cloud/badger/v3/y
+===> Testing WAL mode go.linka.cloud/badger/v3/badger
+[INFO] Async backend writer enabled
+?   	go.linka.cloud/badger/v3/badger	[no test files]
+time=2026-02-28T11:51:41.828+01:00 level=INFO msg="shutting down async backend writer" startedPuts=15 successPuts=13 failedPuts=0
+time=2026-02-28T11:51:41.833+01:00 level=INFO msg="async backend writer statistics" avgPutTime=6.554ms
+time=2026-02-28T11:51:41.833+01:00 level=INFO msg="shutting down async backend writer" startedPuts=15 successPuts=15 failedPuts=0
+time=2026-02-28T11:51:41.833+01:00 level=INFO msg="async backend writer statistics" avgPutTime=6.554ms
+===> Testing WAL mode go.linka.cloud/badger/v3/badger/cmd
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/badger/cmd	1.299s
+time=2026-02-28T11:51:44.579+01:00 level=INFO msg="shutting down async backend writer" startedPuts=13 successPuts=13 failedPuts=0
+time=2026-02-28T11:51:44.579+01:00 level=INFO msg="async backend writer statistics" avgPutTime=5.268ms
+time=2026-02-28T11:51:44.579+01:00 level=INFO msg="shutting down async backend writer" startedPuts=13 successPuts=13 failedPuts=0
+time=2026-02-28T11:51:44.579+01:00 level=INFO msg="async backend writer statistics" avgPutTime=5.268ms
+===> Testing WAL mode go.linka.cloud/badger/v3/badger-test-big
+[INFO] Async backend writer enabled
+?   	go.linka.cloud/badger/v3/badger-test-big	[no test files]
+time=2026-02-28T11:51:44.892+01:00 level=INFO msg="shutting down async backend writer" startedPuts=5 successPuts=3 failedPuts=0
+time=2026-02-28T11:51:44.895+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.287ms
+time=2026-02-28T11:51:44.895+01:00 level=INFO msg="shutting down async backend writer" startedPuts=5 successPuts=5 failedPuts=0
+time=2026-02-28T11:51:44.895+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.287ms
+===> Testing WAL mode go.linka.cloud/badger/v3/fb
+[INFO] Async backend writer enabled
+?   	go.linka.cloud/badger/v3/fb	[no test files]
+time=2026-02-28T11:51:44.985+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:44.985+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/integration/testgc
+[INFO] Async backend writer enabled
+?   	go.linka.cloud/badger/v3/integration/testgc	[no test files]
+time=2026-02-28T11:51:45.303+01:00 level=INFO msg="shutting down async backend writer" startedPuts=5 successPuts=3 failedPuts=0
+time=2026-02-28T11:51:45.307+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.877ms
+time=2026-02-28T11:51:45.307+01:00 level=INFO msg="shutting down async backend writer" startedPuts=5 successPuts=5 failedPuts=0
+time=2026-02-28T11:51:45.307+01:00 level=INFO msg="async backend writer statistics" avgPutTime=4.877ms
+===> Testing WAL mode go.linka.cloud/badger/v3/options
+[INFO] Async backend writer enabled
+?   	go.linka.cloud/badger/v3/options	[no test files]
+time=2026-02-28T11:51:45.384+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:45.384+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/pb
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/pb	(cached)
+time=2026-02-28T11:51:45.555+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:45.555+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/skl
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/skl	(cached)
+time=2026-02-28T11:51:45.765+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:45.765+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/table
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/table	(cached)
+time=2026-02-28T11:51:46.092+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:46.092+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/trie
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/trie	(cached)
+time=2026-02-28T11:51:46.284+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:46.284+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+===> Testing WAL mode go.linka.cloud/badger/v3/y
+[INFO] Async backend writer enabled
+ok  	go.linka.cloud/badger/v3/y	(cached)
+time=2026-02-28T11:51:46.488+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+time=2026-02-28T11:51:46.488+01:00 level=INFO msg="shutting down async backend writer" startedPuts=0 successPuts=0 failedPuts=0
+==> DONE WAL-mode package tests
+==> Running WAL-mode root tests
+[INFO] Async backend writer enabled
+=== RUN   TestBackupRestore1
+    backup_test.go:105: Got entry: 1
+    backup_test.go:105: Got entry: 2
+--- PASS: TestBackupRestore1 (0.17s)
+=== RUN   TestBackupRestore2
+backup1 length: 16828
+backup2 length: 33828
+--- PASS: TestBackupRestore2 (0.56s)
+=== RUN   TestBackup
+=== RUN   TestBackup/disk_mode
+badger 2026/02/28 11:51:52 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:52 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:52 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 24 KiB
+badger 2026/02/28 11:51:52 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:52 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 9.9 KiB of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+=== RUN   TestBackup/InMemory_mode
+badger 2026/02/28 11:51:52 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 24 KiB
+badger 2026/02/28 11:51:52 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:52 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 9.9 KiB of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestBackup (0.26s)
+    --- PASS: TestBackup/disk_mode (0.16s)
+    --- PASS: TestBackup/InMemory_mode (0.10s)
+=== RUN   TestBackupRestore3
+badger 2026/02/28 11:51:52 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:52 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:52 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 24 KiB
+badger 2026/02/28 11:51:52 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:52 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 9.9 KiB of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+badger 2026/02/28 11:51:52 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:52 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:52 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:52 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:52 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 9.9 KiB of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestBackupRestore3 (0.18s)
+=== RUN   TestBackupLoadIncremental
+badger 2026/02/28 11:51:52 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:52 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:52 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 2.3 KiB
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 209 B
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 135 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Streaming about 0 B of uncompressed data (0 B on disk)
+badger 2026/02/28 11:51:52 INFO: Number of ranges found: 2
+badger 2026/02/28 11:51:52 INFO: Sent range 0 for iteration: [, 6b657930fffffffffffffffe) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: Sent range 1 for iteration: [6b657930fffffffffffffffe, ) of size: 0 B
+badger 2026/02/28 11:51:52 INFO: DB.Backup Sent data of size 208 B
+badger 2026/02/28 11:51:52 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:52 INFO: 
+Level 0 [ ]: NumTables: 01. Size: 1.3 KiB of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestBackupLoadIncremental (0.22s)
+=== RUN   TestBackupBitClear
+--- PASS: TestBackupBitClear (0.12s)
+=== RUN   TestWriteBatch
+=== RUN   TestWriteBatch/disk_mode
+    batch_test.go:55: Time taken for 51000 writes (w/ test options): 2.388880717s
+    batch_test.go:83: Disk mode done
+=== RUN   TestWriteBatch/InMemory_mode
+    batch_test.go:86: TODO(ibrahim): Please fix this
+--- PASS: TestWriteBatch (3.64s)
+    --- PASS: TestWriteBatch/disk_mode (3.64s)
+    --- SKIP: TestWriteBatch/InMemory_mode (0.00s)
+=== RUN   TestEmptyWriteBatch
+=== RUN   TestEmptyWriteBatch/normal_mode
+=== RUN   TestEmptyWriteBatch/managed_mode
+=== RUN   TestEmptyWriteBatch/managed_mode/WriteBatchAt
+=== RUN   TestEmptyWriteBatch/managed_mode/ManagedWriteBatch
+--- PASS: TestEmptyWriteBatch (0.07s)
+    --- PASS: TestEmptyWriteBatch/normal_mode (0.04s)
+    --- PASS: TestEmptyWriteBatch/managed_mode (0.04s)
+        --- PASS: TestEmptyWriteBatch/managed_mode/WriteBatchAt (0.00s)
+        --- PASS: TestEmptyWriteBatch/managed_mode/ManagedWriteBatch (0.00s)
+=== RUN   TestFlushPanic
+=== RUN   TestFlushPanic/flush_after_flush
+=== RUN   TestFlushPanic/flush_after_cancel
+--- PASS: TestFlushPanic (0.11s)
+    --- PASS: TestFlushPanic/flush_after_flush (0.03s)
+    --- PASS: TestFlushPanic/flush_after_cancel (0.07s)
+=== RUN   TestBatchErrDeadlock
+badger 2026/02/28 11:51:56 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:56 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:56 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:56 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:56 INFO: 
+Level 0 [ ]: NumTables: 00. Size: 0 B of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestBatchErrDeadlock (0.08s)
+=== RUN   TestTruncateVlogWithClose
+    db2_test.go:48: vlog truncation test is not applicable in WAL mode
+--- SKIP: TestTruncateVlogWithClose (0.00s)
+=== RUN   TestTruncateVlogNoClose
+    db_test.go:81: value-log based test is not applicable in WAL mode
+--- SKIP: TestTruncateVlogNoClose (0.00s)
+=== RUN   TestTruncateVlogNoClose2
+    db_test.go:81: value-log based test is not applicable in WAL mode
+--- SKIP: TestTruncateVlogNoClose2 (0.00s)
+=== RUN   TestTruncateVlogNoClose3
+    db_test.go:81: value-log based test is not applicable in WAL mode
+--- SKIP: TestTruncateVlogNoClose3 (0.00s)
+=== RUN   TestBigKeyValuePairs
+    db2_test.go:216: Skipping test meant to be run manually.
+--- SKIP: TestBigKeyValuePairs (0.00s)
+=== RUN   TestPushValueLogLimit
+    db_test.go:81: value-log based test is not applicable in WAL mode
+--- SKIP: TestPushValueLogLimit (0.00s)
+=== RUN   TestBigValues
+    db2_test.go:373: Skipping test meant to be run manually.
+--- SKIP: TestBigValues (0.00s)
+=== RUN   TestCompactionFilePicking
+badger 2026/02/28 11:51:56 INFO: All 0 tables opened in 0s
+badger 2026/02/28 11:51:56 INFO: Discard stats nextEmptySlot: 0
+badger 2026/02/28 11:51:56 INFO: Set nextTxnTs to 0
+badger 2026/02/28 11:51:56 INFO: Lifetime L0 stalled for: 0s
+badger 2026/02/28 11:51:56 INFO: 
+Level 0 [ ]: NumTables: 00. Size: 0 B of 0 B. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 64 MiB
+Level 1 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 2 [ ]: NumTables: 03. Size: 527 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 3 [ ]: NumTables: 10. Size: 1.7 KiB of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 4 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 5 [ ]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level 6 [B]: NumTables: 00. Size: 0 B of 10 MiB. Score: 0.00->0.00 StaleData: 0 B Target FileSize: 2.0 MiB
+Level Done
+--- PASS: TestCompactionFilePicking (0.08s)
+=== RUN   TestReadSameVlog
+    db2_test.go:536: vlog read-path test is not applicable in WAL mode
+--- SKIP: TestReadSameVlog (0.00s)
+=== RUN   TestL0GCBug
+    db_test.go:81: value-log based test is not applicable in WAL mode
+--- SKIP: TestL0GCBug (0.00s)
+=== RUN   TestWindowsDataLoss
+    db2_test.go:686: The test is only for Windows.
+--- SKIP: TestWindowsDataLoss (0.00s)
+=== RUN   TestDropPrefixWithNoData
+--- PASS: TestDropPrefixWithNoData (0.10s)
+=== RUN   TestDropAllDropPrefix

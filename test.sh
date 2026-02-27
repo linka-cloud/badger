@@ -64,6 +64,21 @@ manual() {
   echo "==> DONE manual tests"
 }
 
+wal() {
+  timeout="-timeout 2m"
+  echo "==> Running WAL-mode package tests for $packages"
+  set -e
+  for pkg in $packages; do
+    echo "===> Testing WAL mode $pkg"
+    BADGER_TEST_WAL=1 go test $tags -timeout=25m $covermode $coverprofile -race -parallel 16 $pkg && write_coverage
+  done
+  echo "==> DONE WAL-mode package tests"
+
+  echo "==> Running WAL-mode root tests"
+  BADGER_TEST_WAL=1 go test $tags -v -race -parallel=16 -timeout=25m $covermode $coverprofile . && write_coverage
+  echo "==> DONE WAL-mode root tests"
+}
+
 root() {
   # Run the normal tests.
   # go test -timeout=25m -v -race go.linka.cloud/badger/v3/...
@@ -106,6 +121,7 @@ write_coverage() {
 # parallel tests currently not working
 # parallel --halt now,fail=1 --progress --line-buffer ::: stream manual root
 # run tests in sequence
+wal
 root
 stream
 manual

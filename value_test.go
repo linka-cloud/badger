@@ -35,6 +35,7 @@ import (
 )
 
 func TestDynamicValueThreshold(t *testing.T) {
+	skipInWALMode(t)
 	t.Skip()
 	dir, err := ioutil.TempDir("", "badger-test")
 	y.Check(err)
@@ -77,6 +78,10 @@ func TestDynamicValueThreshold(t *testing.T) {
 }
 
 func TestValueBasic(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("value log unit test is not applicable in WAL mode")
+	}
+
 	dir, err := ioutil.TempDir("", "badger-test")
 	y.Check(err)
 	defer removeDir(dir)
@@ -137,6 +142,7 @@ func TestValueBasic(t *testing.T) {
 }
 
 func TestValueGCManaged(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -204,6 +210,7 @@ func TestValueGCManaged(t *testing.T) {
 }
 
 func TestValueGC(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -257,6 +264,7 @@ func TestValueGC(t *testing.T) {
 }
 
 func TestValueGC2(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -334,6 +342,7 @@ func TestValueGC2(t *testing.T) {
 }
 
 func TestValueGC3(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -409,6 +418,7 @@ func TestValueGC3(t *testing.T) {
 }
 
 func TestValueGC4(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -483,6 +493,7 @@ func TestValueGC4(t *testing.T) {
 }
 
 func TestPersistLFDiscardStats(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -547,6 +558,7 @@ func TestPersistLFDiscardStats(t *testing.T) {
 }
 
 func TestValueChecksums(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -630,6 +642,7 @@ func TestValueChecksums(t *testing.T) {
 
 // TODO: Do we need this test?
 func TestPartialAppendToWAL(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -692,6 +705,7 @@ func TestPartialAppendToWAL(t *testing.T) {
 }
 
 func TestReadOnlyOpenWithPartialAppendToWAL(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -730,6 +744,7 @@ func TestReadOnlyOpenWithPartialAppendToWAL(t *testing.T) {
 }
 
 func TestValueLogTrigger(t *testing.T) {
+	skipInWALMode(t)
 	t.Skip("Difficult to trigger compaction, so skipping. Re-enable after fixing #226")
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
@@ -795,6 +810,7 @@ func createMemFile(t *testing.T, entries []*Entry) ([]byte, uint32) {
 
 // This test creates two mem files and corrupts the last bit of the first file.
 func TestPenultimateMemCorruption(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -921,6 +937,7 @@ func (th *testHelper) readRange(from, to int) {
 // older version can end up at a higher level in the LSM tree than a newer
 // version, causing the data to not be returned.
 func TestBug578(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	y.Check(err)
 	defer removeDir(dir)
@@ -1017,6 +1034,7 @@ func BenchmarkReadWrite(b *testing.B) {
 // Regression test for https://github.com/dgraph-io/badger/issues/817
 // This test verifies if fully corrupted memtables are deleted on reopen.
 func TestValueLogTruncate(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)
@@ -1057,6 +1075,7 @@ func TestValueLogTruncate(t *testing.T) {
 }
 
 func TestSafeEntry(t *testing.T) {
+	skipInWALMode(t)
 	var s safeRead
 	s.lf = &logFile{}
 	e := NewEntry([]byte("foo"), []byte("bar"))
@@ -1074,6 +1093,7 @@ func TestSafeEntry(t *testing.T) {
 }
 
 func TestValueEntryChecksum(t *testing.T) {
+	skipInWALMode(t)
 	k := []byte("KEY")
 	v := []byte(fmt.Sprintf("val%100d", 10))
 	t.Run("ok", func(t *testing.T) {
@@ -1154,6 +1174,7 @@ func TestValueEntryChecksum(t *testing.T) {
 }
 
 func TestValidateWrite(t *testing.T) {
+	skipInWALMode(t)
 	// Mocking the file size, so that we don't allocate big memory while running test.
 	maxVlogFileSize = 400
 	defer func() {
@@ -1215,6 +1236,7 @@ func TestValidateWrite(t *testing.T) {
 }
 
 func TestValueLogMeta(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	y.Check(err)
 	defer removeDir(dir)
@@ -1258,6 +1280,7 @@ func TestValueLogMeta(t *testing.T) {
 // This tests asserts the condition that vlog fids start from 1.
 // TODO(naman): should this be changed to assert instead?
 func TestFirstVlogFile(t *testing.T) {
+	skipInWALMode(t)
 	dir, err := ioutil.TempDir("", "badger-test")
 	require.NoError(t, err)
 	defer removeDir(dir)

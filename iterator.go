@@ -168,7 +168,16 @@ func (item *Item) yieldItemValue() ([]byte, func(), error) {
 	var vp valuePointer
 	vp.Decode(item.vptr)
 	db := item.txn.db
-	result, cb, err := db.vlog.Read(vp, item.slice)
+	var (
+		result []byte
+		cb     func()
+		err    error
+	)
+	if item.meta&bitWALPointer > 0 {
+		result, err = db.wal.readIntentValue(vp)
+	} else {
+		result, cb, err = db.vlog.Read(vp, item.slice)
+	}
 	if err != nil {
 		db.opt.Logger.Errorf("Unable to read: Key: %v, Version : %v, meta: %v, userMeta: %v"+
 			" Error: %v", key, item.version, item.meta, item.userMeta, err)
@@ -484,7 +493,11 @@ func (txn *Txn) NewIterator(opt IteratorOptions) *Iterator {
 	// the prefix.
 	tables, decr := txn.db.getMemTables()
 	defer decr()
-	txn.db.vlog.incrIteratorCount()
+	if txn.db.opt.EnableWAL {
+		txn.db.wal.incrIteratorCount()
+	} else {
+		txn.db.vlog.incrIteratorCount()
+	}
 	var iters []y.Iterator
 	if itr := txn.newPendingWritesIterator(opt.Reverse); itr != nil {
 		iters = append(iters, itr)
@@ -573,7 +586,11 @@ func (it *Iterator) Close() {
 	waitFor(it.data)
 
 	// TODO: We could handle this error.
-	_ = it.txn.db.vlog.decrIteratorCount()
+	if it.txn.db.opt.EnableWAL {
+		_ = it.txn.db.wal.decrIteratorCount()
+	} else {
+		_ = it.txn.db.vlog.decrIteratorCount()
+	}
 	atomic.AddInt32(&it.txn.numIterators, -1)
 }
 

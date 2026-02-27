@@ -44,6 +44,10 @@ import (
 )
 
 func TestTruncateVlogWithClose(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("vlog truncation test is not applicable in WAL mode")
+	}
+
 	key := func(i int) []byte {
 		return []byte(fmt.Sprintf("%d%10d", i, i))
 	}
@@ -125,6 +129,7 @@ var benchDir = flag.String("benchdir", "", "Set when running db.Open benchmark")
 // first entry in the txn. At <4090, it would cause the entry to be truncated
 // immediately, at >4090, same thing.
 func TestTruncateVlogNoClose(t *testing.T) {
+	skipInWALMode(t)
 	if !*manual {
 		t.Skip("Skipping test meant to be run manually.")
 		return
@@ -145,6 +150,7 @@ func TestTruncateVlogNoClose(t *testing.T) {
 	require.NoError(t, err)
 }
 func TestTruncateVlogNoClose2(t *testing.T) {
+	skipInWALMode(t)
 	if !*manual {
 		t.Skip("Skipping test meant to be run manually.")
 		return
@@ -177,6 +183,7 @@ func TestTruncateVlogNoClose2(t *testing.T) {
 	}
 }
 func TestTruncateVlogNoClose3(t *testing.T) {
+	skipInWALMode(t)
 	if !*manual {
 		t.Skip("Skipping test meant to be run manually.")
 		return
@@ -295,6 +302,7 @@ func TestBigKeyValuePairs(t *testing.T) {
 
 // The following test checks for issue #585.
 func TestPushValueLogLimit(t *testing.T) {
+	skipInWALMode(t)
 	// This test takes too much memory. So, run separately.
 	if !*manual {
 		t.Skip("Skipping test meant to be run manually.")
@@ -524,6 +532,10 @@ func createTableWithRange(t *testing.T, db *DB, start, end int) *table.Table {
 }
 
 func TestReadSameVlog(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("vlog read-path test is not applicable in WAL mode")
+	}
+
 	key := func(i int) []byte {
 		return []byte(fmt.Sprintf("%d%10d", i, i))
 	}
@@ -576,6 +588,7 @@ func TestReadSameVlog(t *testing.T) {
 // The test ensures we don't lose data when badger is opened with KeepL0InMemory and GC is being
 // done.
 func TestL0GCBug(t *testing.T) {
+	skipInWALMode(t)
 	t.Skipf("TestL0GCBug is DISABLED. TODO(ibrahim): Do we need this?")
 
 	dir, err := ioutil.TempDir("", "badger-test")
