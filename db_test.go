@@ -397,6 +397,65 @@ func TestTxnTooBig(t *testing.T) {
 	})
 }
 
+func TestLargeTxnBeyondBatchLimits(t *testing.T) {
+	opts := DefaultOptions("")
+	opts.MemTableSize = 1 << 20
+	opts.ValueThreshold = 32
+	runBadgerTest(t, &opts, func(t *testing.T, db *DB) {
+		data := func(i int) []byte {
+			return []byte(fmt.Sprintf("%08d", i))
+		}
+
+		n := int(db.MaxBatchCount()) + 128
+		txn := db.NewTransaction(true)
+		for i := 0; i < n; i++ {
+			require.NoError(t, txn.SetEntry(NewEntry(data(i), data(i))))
+		}
+		require.NoError(t, txn.Commit())
+
+		txn = db.NewTransaction(false)
+		defer txn.Discard()
+		for i := 0; i < n; i++ {
+			item, err := txn.Get(data(i))
+			require.NoError(t, err)
+			require.Equal(t, data(i), getItemValue(t, item))
+		}
+	})
+}
+
+func TestLargeTxnReadYourWrites(t *testing.T) {
+	opts := DefaultOptions("")
+	opts.MemTableSize = 1 << 20
+	opts.ValueThreshold = 32
+	runBadgerTest(t, &opts, func(t *testing.T, db *DB) {
+		key := func(i int) []byte {
+			return []byte(fmt.Sprintf("ryw-%08d", i))
+		}
+		val := func(i int) []byte {
+			return []byte(fmt.Sprintf("val-%08d", i))
+		}
+
+		n := int(db.MaxBatchCount()) + 256
+		txn := db.NewTransaction(true)
+		for i := 0; i < n; i++ {
+			require.NoError(t, txn.SetEntry(NewEntry(key(i), val(i))))
+			if i%97 == 0 {
+				item, err := txn.Get(key(i))
+				require.NoError(t, err)
+				require.Equal(t, val(i), getItemValue(t, item))
+			}
+		}
+
+		for i := 0; i < n; i += 113 {
+			item, err := txn.Get(key(i))
+			require.NoError(t, err)
+			require.Equal(t, val(i), getItemValue(t, item))
+		}
+
+		require.NoError(t, txn.Commit())
+	})
+}
+
 func TestForceCompactL0(t *testing.T) {
 	dir, err := os.MkdirTemp("", "badger-test")
 	require.NoError(t, err)
@@ -413,7 +472,7 @@ func TestForceCompactL0(t *testing.T) {
 		return []byte(fmt.Sprintf("%b", i))
 	}
 	n := 80
-	m := 45 // Increasing would cause ErrTxnTooBig
+	m := 45
 	sz := 32 << 10
 	v := make([]byte, sz)
 	for i := 0; i < n; i += 2 {
@@ -539,26 +598,14 @@ func BenchmarkDbGrowth(b *testing.B) {
 			for i := lastStart; i < start; i++ {
 				key := make([]byte, 8)
 				binary.BigEndian.PutUint64(key[:], uint64(i))
-				err := txn.Delete(key)
-				if err == ErrTxnTooBig {
-					require.NoError(b, txn.Commit())
-					txn = db.NewTransaction(true)
-				} else {
-					require.NoError(b, err)
-				}
+				require.NoError(b, txn.Delete(key))
 			}
 		}
 
 		for i := start; i < numKeys+start; i++ {
 			key := make([]byte, 8)
 			binary.BigEndian.PutUint64(key[:], uint64(i))
-			err := txn.SetEntry(NewEntry(key, value))
-			if err == ErrTxnTooBig {
-				require.NoError(b, txn.Commit())
-				txn = db.NewTransaction(true)
-			} else {
-				require.NoError(b, err)
-			}
+			require.NoError(b, txn.SetEntry(NewEntry(key, value)))
 		}
 		require.NoError(b, txn.Commit())
 		require.NoError(b, db.Flatten(1))
@@ -596,7 +643,7 @@ func TestGetMore(t *testing.T) {
 			return []byte(fmt.Sprintf("%b", i))
 		}
 		n := 200000
-		m := 45 // Increasing would cause ErrTxnTooBig
+		m := 45
 		for i := 0; i < n; i += m {
 			if (i % 10000) == 0 {
 				fmt.Printf("Inserting i=%d\n", i)

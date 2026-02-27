@@ -12,6 +12,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"os"
 	"path/filepath"
@@ -106,6 +107,7 @@ type DB struct {
 
 	blockWrites atomic.Int32
 	isClosed    atomic.Uint32
+	nextTxnID   atomic.Uint64
 
 	orc              *oracle
 	bannedNamespaces *lockedKeys
@@ -789,39 +791,144 @@ func (db *DB) writeToLSM(b *request) error {
 		return fmt.Errorf("Ptrs and Entries don't match: %+v", b)
 	}
 
+	getMt := func() *memTable {
+		db.lock.RLock()
+		defer db.lock.RUnlock()
+		return db.mt
+	}
+	mt := getMt()
+
 	for i, entry := range b.Entries {
-		var err error
-		if entry.skipVlogAndSetThreshold(db.valueThreshold()) {
-			// Will include deletion / tombstone case.
-			err = db.mt.Put(entry.Key,
-				y.ValueStruct{
+		for {
+			fromIntent := entry.meta&bitTxnIntent > 0
+			entryMeta := entry.meta &^ bitTxnIntent
+			var err error
+			if entry.skipVlogAndSetThreshold(db.valueThreshold()) {
+				// Will include deletion / tombstone case.
+				vs := y.ValueStruct{
 					Value: entry.Value,
 					// Ensure value pointer flag is removed. Otherwise, the value will fail
 					// to be retrieved during iterator prefetch. `bitValuePointer` is only
 					// known to be set in write to LSM when the entry is loaded from a backup
 					// with lower ValueThreshold and its value was stored in the value log.
-					Meta:      entry.meta &^ bitValuePointer,
+					Meta:      entryMeta &^ bitValuePointer,
 					UserMeta:  entry.UserMeta,
 					ExpiresAt: entry.ExpiresAt,
-				})
-		} else {
-			// Write pointer to Memtable.
-			err = db.mt.Put(entry.Key,
-				y.ValueStruct{
+				}
+				if fromIntent {
+					err = mt.putSkiplistOnly(entry.Key, vs)
+				} else {
+					err = mt.Put(entry.Key, vs)
+				}
+			} else {
+				// Write pointer to Memtable.
+				vs := y.ValueStruct{
 					Value:     b.Ptrs[i].Encode(),
-					Meta:      entry.meta | bitValuePointer,
+					Meta:      entryMeta | bitValuePointer,
 					UserMeta:  entry.UserMeta,
 					ExpiresAt: entry.ExpiresAt,
-				})
-		}
-		if err != nil {
-			return y.Wrapf(err, "while writing to memTable")
+				}
+				if fromIntent {
+					err = mt.putSkiplistOnly(entry.Key, vs)
+				} else {
+					err = mt.Put(entry.Key, vs)
+				}
+			}
+			if err == errNoRoom {
+				for {
+					err = db.ensureRoomForWrite()
+					if err == errNoRoom {
+						time.Sleep(10 * time.Millisecond)
+						continue
+					}
+					break
+				}
+				if err != nil {
+					return y.Wrap(err, "writeRequests")
+				}
+				mt = getMt()
+				continue
+			}
+			if err != nil {
+				return y.Wrapf(err, "while writing to memTable")
+			}
+			break
 		}
 	}
 	if db.opt.SyncWrites {
-		return db.mt.SyncWAL()
+		return mt.SyncWAL()
 	}
 	return nil
+}
+
+func (db *DB) appendTxnIntent(e *Entry) (txnWalRef, error) {
+	if db.opt.InMemory {
+		return txnWalRef{val: e.Value}, nil
+	}
+	maxWalEntry := int64(2*db.opt.MemTableSize) - maxHeaderSize - crc32.Size - 1
+	if int64(len(e.Key)+len(e.Value)) > maxWalEntry {
+		return txnWalRef{val: e.Value}, nil
+	}
+
+	for {
+		err := db.ensureRoomForWrite()
+		if err == errNoRoom {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			return txnWalRef{}, err
+		}
+
+		db.lock.RLock()
+		mt := db.mt
+		mt.IncrRef()
+		db.lock.RUnlock()
+
+		vp, err := mt.appendToWal(e)
+		if err == errNoRoom {
+			mt.DecrRef()
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			mt.DecrRef()
+			if len(e.Value) > len(mt.wal.Data)/2 {
+				return txnWalRef{val: e.Value}, nil
+			}
+			return txnWalRef{}, err
+		}
+		return txnWalRef{mt: mt, vp: vp}, nil
+	}
+}
+
+func (db *DB) readTxnValue(ref txnWalRef) []byte {
+	decode := func(v []byte) []byte {
+		intent, ok := decodeTxnIntentValue(v)
+		if !ok {
+			return nil
+		}
+		return y.SafeCopy(nil, intent.Value)
+	}
+
+	if ref.mt == nil {
+		return decode(ref.val)
+	}
+	ref.mt.walLock.Lock()
+	defer ref.mt.walLock.Unlock()
+	lf := ref.mt.wal
+	lf.lock.RLock()
+	defer lf.lock.RUnlock()
+
+	buf, err := lf.read(ref.vp)
+	if err != nil {
+		return nil
+	}
+	e, err := lf.decodeEntry(buf, ref.vp.Offset)
+	if err != nil {
+		return nil
+	}
+	return decode(e.Value)
 }
 
 // writeRequests is called serially by only one goroutine.
@@ -884,25 +991,33 @@ func (db *DB) sendToWriteCh(entries []*Entry) (*request, error) {
 	if db.blockWrites.Load() == 1 {
 		return nil, ErrBlockedWrites
 	}
-	var count, size int64
+	var userBytes, userPuts int64
 	for _, e := range entries {
-		size += e.estimateSizeAndSetThreshold(db.valueThreshold())
-		count++
+		if e.meta&bitFinTxn > 0 {
+			continue
+		}
+		if e.meta&bitTxnIntent > 0 {
+			if intent, ok := decodeTxnIntentValue(e.Value); ok {
+				userBytes += intent.estimateSizeAndSetThreshold(db.valueThreshold())
+				userPuts++
+				continue
+			}
+		}
+		userBytes += e.estimateSizeAndSetThreshold(db.valueThreshold())
+		userPuts++
 	}
-	y.NumBytesWrittenUserAdd(db.opt.MetricsEnabled, size)
-	if count >= db.opt.maxBatchCount || size >= db.opt.maxBatchSize {
-		return nil, ErrTxnTooBig
-	}
+	y.NumBytesWrittenUserAdd(db.opt.MetricsEnabled, userBytes)
+	y.NumPutsAdd(db.opt.MetricsEnabled, userPuts)
 
-	// We can only service one request because we need each txn to be stored in a contiguous section.
-	// Txns should not interleave among other txns or rewrites.
+	// Each request must remain contiguous in the WAL write stream.
+	// A single transaction can span multiple requests, but writeChLock ensures
+	// they are enqueued without interleaving with other txns or rewrites.
 	req := requestPool.Get().(*request)
 	req.reset()
 	req.Entries = entries
 	req.Wg.Add(1)
 	req.IncrRef()     // for db write
 	db.writeCh <- req // Handled in doWrites.
-	y.NumPutsAdd(db.opt.MetricsEnabled, int64(len(entries)))
 
 	return req, nil
 }
