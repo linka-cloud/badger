@@ -6,12 +6,17 @@
 package badger
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestBuildKeyValueSizeHistogram(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("histogram expectations are based on memwal value encoding")
+	}
+
 	t.Run("All same size key-values", func(t *testing.T) {
 		runBadgerTest(t, nil, func(t *testing.T, db *DB) {
 			entries := int64(40)

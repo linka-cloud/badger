@@ -40,6 +40,8 @@ const (
 	bitDiscardEarlierVersions byte = 1 << 2 // Set if earlier versions can be discarded.
 	// Set if item shouldn't be discarded via compactions (used by merge operator)
 	bitMergeEntry byte = 1 << 3
+	// Set if the encoded value pointer points to WAL instead of vlog.
+	bitWALPointer byte = 1 << 4
 	// Set for transaction intent records persisted to memtable WAL.
 	bitTxnIntent byte = 1 << 5
 	// The MSB 2 bits are for transactions.
@@ -196,6 +198,9 @@ func (vlog *valueLog) rewrite(f *logFile) error {
 		// Value is still present in value log.
 		if len(vs.Value) == 0 {
 			return fmt.Errorf("Empty value: %+v", vs)
+		}
+		if vs.Meta&bitWALPointer > 0 {
+			return nil
 		}
 		var vp valuePointer
 		vp.Decode(vs.Value)
@@ -862,7 +867,7 @@ func (vlog *valueLog) write(reqs []*request) error {
 			// would break vlog GC iteration assumptions. Preserve them for memtable WAL by masking
 			// only for vlog encoding and restoring after the write.
 			tmpMeta := e.meta
-			e.meta = e.meta &^ (bitTxn | bitFinTxn | bitTxnIntent)
+			e.meta = e.meta &^ (bitTxn | bitFinTxn | bitTxnIntent | bitWALPointer)
 			plen, err := curlf.encodeEntry(buf, e, p.Offset) // Now encode the entry into buffer.
 			if err != nil {
 				return err

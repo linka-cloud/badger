@@ -94,7 +94,16 @@ func getTestOptions(dir string) Options {
 	opt := DefaultOptions(dir).
 		WithSyncWrites(false).
 		WithLoggingLevel(WARNING)
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		opt = opt.WithWAL(true)
+	}
 	return opt
+}
+
+func skipInWALMode(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("value-log based test is not applicable in WAL mode")
+	}
 }
 
 func getItemValue(t *testing.T, item *Item) (val []byte) {
@@ -2209,8 +2218,12 @@ func TestSyncForReadingTheEntriesThatWereSynced(t *testing.T) {
 }
 
 func TestForceFlushMemtable(t *testing.T) {
+	if os.Getenv("BADGER_TEST_WAL") == "1" {
+		t.Skip("memtable fid rotation test is specific to memwal mode")
+	}
+
 	dir, err := os.MkdirTemp("", "badger-test")
-	require.NoError(t, err, "temp dir for badger could not be created")
+	require.NoError(t, err, "temp dir for badger count not be created")
 
 	ops := getTestOptions(dir)
 	ops.ValueLogMaxEntries = 1
@@ -2470,7 +2483,11 @@ func TestBannedPrefixes(t *testing.T) {
 	initialBytes := make([]byte, opt.NamespaceOffset)
 	db, err := Open(opt)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(db.vlog.filesMap))
+	if opt.EnableWAL {
+		require.Equal(t, 1, len(db.wal.files))
+	} else {
+		require.Equal(t, 1, len(db.vlog.filesMap))
+	}
 
 	var keys [][]byte
 	var allPrefixes []uint64 = []uint64{1234, 3456, 5678, 7890, 901234}
@@ -2525,7 +2542,11 @@ func TestBannedPrefixes(t *testing.T) {
 	bannedPrefixes[5678] = struct{}{}
 	validate()
 
-	require.Greater(t, len(db.vlog.filesMap), 1)
+	if opt.EnableWAL {
+		require.Greater(t, len(db.wal.files), 1)
+	} else {
+		require.Greater(t, len(db.vlog.filesMap), 1)
+	}
 	require.NoError(t, db.Close())
 
 	db, err = Open(opt)

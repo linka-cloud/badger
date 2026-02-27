@@ -20,6 +20,10 @@ var (
 	vlogSize *expvar.Map
 	// pendingWrites tracks the number of pending writes.
 	pendingWrites *expvar.Map
+	// walReplay tracks replay counters for WAL path.
+	walReplay *expvar.Map
+	// walLSN tracks WAL durable/applied positions.
+	walLSN *expvar.Map
 
 	// These are cumulative
 
@@ -92,6 +96,8 @@ func init() {
 	vlogSize = expvar.NewMap(BADGER_METRIC_PREFIX + "size_bytes_vlog")
 
 	pendingWrites = expvar.NewMap(BADGER_METRIC_PREFIX + "write_pending_num_memtable")
+	walReplay = expvar.NewMap(BADGER_METRIC_PREFIX + "wal_replay")
+	walLSN = expvar.NewMap(BADGER_METRIC_PREFIX + "wal_lsn")
 	numCompactionTables = expvar.NewInt(BADGER_METRIC_PREFIX + "compaction_current_num_lsm")
 }
 
@@ -169,6 +175,19 @@ func NumLSMBloomHitsAdd(enabled bool, key string, val int64) {
 
 func NumLSMGetsAdd(enabled bool, key string, val int64) {
 	addToMap(enabled, numLSMGets, key, val)
+}
+
+func WALReplayAdd(enabled bool, key string, val int64) {
+	addToMap(enabled, walReplay, key, val)
+}
+
+func WALLSNSet(enabled bool, key string, val int64) {
+	if !enabled {
+		return
+	}
+	v := new(expvar.Int)
+	v.Set(val)
+	walLSN.Set(key, v)
 }
 
 func LSMSizeGet(enabled bool, key string) expvar.Var {
