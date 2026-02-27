@@ -111,23 +111,12 @@ An `ErrConflict` error will be reported in case of a conflict. Depending on the 
 of your application, you have the option to retry the operation if you receive
 this error.
 
-An `ErrTxnTooBig` will be reported in case the number of pending writes/deletes in
-the transaction exceeds a certain limit. In that case, it is best to commit the
-transaction and start a new transaction immediately. Here is an example (we are
-not checking for errors in some places for simplicity):
+Large transactions are supported. Large transaction atomicity is guaranteed when
+the transaction is committed with a single commit timestamp.
 
-```go
-updates := make(map[string]string)
-txn := db.NewTransaction(true)
-for k,v := range updates {
-  if err := txn.Set([]byte(k),[]byte(v)); err == badger.ErrTxnTooBig {
-    _ = txn.Commit()
-    txn = db.NewTransaction(true)
-    _ = txn.Set([]byte(k),[]byte(v))
-  }
-}
-_ = txn.Commit()
-```
+For managed writes where versions differ (`keepTogether=false`), large
+transaction support removes size limits but preserves existing non-atomic
+semantics.
 
 ### Managing transactions manually
 The `DB.View()` and `DB.Update()` methods are wrappers around the

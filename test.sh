@@ -5,7 +5,7 @@ set -eo pipefail
 go version
 
 # Check if Github Actions is running
-if [ $CI = "true" ]; then
+if [ "$CI" = "true" ]; then
   # Enable code coverage
   # export because tests run in a subprocess
   export covermode="-covermode=atomic"
@@ -18,7 +18,7 @@ fi
 # export packages because the test will run in a sub process.
 export packages=$(go list ./... | grep "github.com/dgraph-io/badger/v4/")
 
-tags="-tags=jemalloc"
+# tags="-tags=jemalloc"
 
 # Compile the Badger binary
 pushd badger
@@ -40,7 +40,7 @@ manual() {
   # Run the special Truncate test.
   rm -rf p
   set -e
-  go test $tags $timeout $covermode $coverprofile -run='TestTruncateVlogNoClose$' -failfast --manual=true && write_coverage || return 1 
+  go test $tags $timeout $covermode $coverprofile -run='TestTruncateVlogNoClose$' -failfast --manual=true && write_coverage || return 1
   truncate --size=4096 p/000000.vlog
   go test $tags $timeout $covermode $coverprofile -run='TestTruncateVlogNoClose2$' -failfast --manual=true && write_coverage || return 1
   go test $tags $timeout $covermode $coverprofile -run='TestTruncateVlogNoClose3$' -failfast --manual=true && write_coverage || return 1
@@ -93,13 +93,13 @@ stream() {
 }
 
 write_coverage() {
-  if [[ $CI = "true" ]]; then
+  if [[ "$CI" = "true" ]]; then
     if [[ -f cover_tmp.out ]]; then
       sed -i '1d' cover_tmp.out
       cat cover_tmp.out >> cover.out && rm cover_tmp.out
     fi
   fi
-  
+
 }
 
 # parallel tests currently not working

@@ -144,20 +144,20 @@ func (wb *WriteBatch) SetEntryAt(e *Entry, ts uint64) error {
 
 // Should be called with lock acquired.
 func (wb *WriteBatch) handleEntry(e *Entry) error {
-	if err := wb.txn.SetEntry(e); err != ErrTxnTooBig {
-		return err
-	}
-	// Txn has reached it's zenith. Commit now.
-	if cerr := wb.commit(); cerr != nil {
-		return cerr
-	}
-	// This time the error must not be ErrTxnTooBig, otherwise, we make the
-	// error permanent.
 	if err := wb.txn.SetEntry(e); err != nil {
-		wb.err.Store(err)
 		return err
+	}
+	if wb.shouldCommitTxn() {
+		return wb.commit()
 	}
 	return nil
+}
+
+func (wb *WriteBatch) shouldCommitTxn() bool {
+	if wb.db.opt.maxBatchCount <= 0 {
+		return false
+	}
+	return wb.txn.seq >= uint64(wb.db.opt.maxBatchCount)
 }
 
 // SetEntry is the equivalent of Txn.SetEntry.
@@ -183,18 +183,8 @@ func (wb *WriteBatch) DeleteAt(k []byte, ts uint64) error {
 func (wb *WriteBatch) Delete(k []byte) error {
 	wb.Lock()
 	defer wb.Unlock()
-
-	if err := wb.txn.Delete(k); err != ErrTxnTooBig {
-		return err
-	}
-	if err := wb.commit(); err != nil {
-		return err
-	}
-	if err := wb.txn.Delete(k); err != nil {
-		wb.err.Store(err)
-		return err
-	}
-	return nil
+	e := Entry{Key: k, meta: bitDelete}
+	return wb.handleEntry(&e)
 }
 
 // Caller to commit must hold a write lock.

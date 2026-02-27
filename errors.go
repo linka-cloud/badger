@@ -35,7 +35,9 @@ var (
 	// ErrKeyNotFound is returned when key isn't found on a txn.Get.
 	ErrKeyNotFound = errors.New("Key not found")
 
-	// ErrTxnTooBig is returned if too many writes are fit into a single transaction.
+	// Deprecated: ErrTxnTooBig is kept for backward compatibility. Transaction
+	// APIs now support large writes and should not return this error in normal
+	// operation.
 	ErrTxnTooBig = errors.New("Txn is too big to fit into one request")
 
 	// ErrConflict is returned when a transaction conflicts with another transaction. This can

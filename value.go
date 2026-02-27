@@ -50,6 +50,8 @@ const (
 	bitDiscardEarlierVersions byte = 1 << 2 // Set if earlier versions can be discarded.
 	// Set if item shouldn't be discarded via compactions (used by merge operator)
 	bitMergeEntry byte = 1 << 3
+	// Set for transaction intent records persisted to memtable WAL.
+	bitTxnIntent byte = 1 << 5
 	// The MSB 2 bits are for transactions.
 	bitTxn    byte = 1 << 6 // Set if the entry is part of a txn.
 	bitFinTxn byte = 1 << 7 // Set if the entry is to indicate end of txn in value log.
@@ -324,11 +326,6 @@ func (vlog *valueLog) rewrite(f *logFile) error {
 			end = len(wb)
 		}
 		if err := vlog.db.batchSet(wb[i:end]); err != nil {
-			if err == ErrTxnTooBig {
-				// Decrease the batch size to half.
-				batchSize = batchSize / 2
-				continue
-			}
 			return err
 		}
 		i += batchSize
@@ -867,13 +864,12 @@ func (vlog *valueLog) write(reqs []*request) error {
 			p.Fid = curlf.fid
 			p.Offset = vlog.woffset()
 
-			// We should not store transaction marks in the vlog file because it will never have all
-			// the entries in a transaction. If we store entries with transaction marks then value
-			// GC will not be able to iterate on the entire vlog file.
-			// But, we still want the entry to stay intact for the memTable WAL. So, store the meta
-			// in a temporary variable and reassign it after writing to the value log.
+			// We should not store transaction markers (including txn intents) in the vlog file,
+			// because vlog files do not contain whole transaction groups. Keeping these markers
+			// would break vlog GC iteration assumptions. Preserve them for memtable WAL by masking
+			// only for vlog encoding and restoring after the write.
 			tmpMeta := e.meta
-			e.meta = e.meta &^ (bitTxn | bitFinTxn)
+			e.meta = e.meta &^ (bitTxn | bitFinTxn | bitTxnIntent)
 			plen, err := curlf.encodeEntry(buf, e, p.Offset) // Now encode the entry into buffer.
 			if err != nil {
 				return err

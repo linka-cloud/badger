@@ -48,6 +48,7 @@ type memTable struct {
 	// TODO: Give skiplist z.Calloc'd []byte.
 	sl         *skl.Skiplist
 	wal        *logFile
+	walLock    sync.Mutex
 	maxVersion uint64
 	opt        Options
 	buf        *bytes.Buffer
@@ -135,6 +136,8 @@ func (db *DB) openMemTable(fid, flags int) (*memTable, error) {
 	// Have a callback set to delete WAL when skiplist reference count goes down to zero. That is,
 	// when it gets flushed to L0.
 	s.OnClose = func() {
+		mt.walLock.Lock()
+		defer mt.walLock.Unlock()
 		if err := mt.wal.Delete(); err != nil {
 			db.opt.Errorf("while deleting file: %s, err: %v", filepath, err)
 		}
@@ -177,6 +180,8 @@ func (mt *memTable) isFull() bool {
 		// InMemory mode doesn't have any WAL.
 		return false
 	}
+	mt.walLock.Lock()
+	defer mt.walLock.Unlock()
 	return int64(mt.wal.writeAt) >= mt.opt.MemTableSize
 }
 
@@ -190,24 +195,57 @@ func (mt *memTable) Put(key []byte, value y.ValueStruct) error {
 	}
 
 	// wal is nil only when badger in running in in-memory mode and we don't need the wal.
-	if mt.wal != nil {
-		// If WAL exceeds opt.ValueLogFileSize, we'll force flush the memTable. See logic in
-		// ensureRoomForWrite.
-		if err := mt.wal.writeEntry(mt.buf, entry, mt.opt); err != nil {
-			return y.Wrapf(err, "cannot write entry to WAL file")
+	if _, err := mt.appendToWal(entry); err != nil {
+		if err == errNoRoom {
+			return err
 		}
+		return y.Wrapf(err, "cannot write entry to WAL file")
 	}
 	// We insert the finish marker in the WAL but not in the memtable.
 	if entry.meta&bitFinTxn > 0 {
 		return nil
 	}
+	return mt.putSkiplistOnly(key, value)
+}
+
+func (mt *memTable) putSkiplistOnly(key []byte, value y.ValueStruct) error {
 
 	// Write to skiplist and update maxVersion encountered.
 	mt.sl.Put(key, value)
-	if ts := y.ParseTs(entry.Key); ts > mt.maxVersion {
+	if ts := y.ParseTs(key); ts > mt.maxVersion {
 		mt.maxVersion = ts
 	}
 	return nil
+}
+
+func (mt *memTable) appendToWal(e *Entry) (valuePointer, error) {
+	if mt.wal == nil {
+		return valuePointer{}, nil
+	}
+
+	mt.walLock.Lock()
+	defer mt.walLock.Unlock()
+
+	mt.buf.Reset()
+	plen, err := mt.wal.encodeEntry(mt.buf, e, mt.wal.writeAt)
+	if err != nil {
+		return valuePointer{}, err
+	}
+	if int(mt.wal.writeAt)+plen+maxHeaderSize >= len(mt.wal.Data) {
+		return valuePointer{}, errNoRoom
+	}
+	start := mt.wal.writeAt
+	y.AssertTrue(plen == copy(mt.wal.Data[mt.wal.writeAt:], mt.buf.Bytes()))
+	mt.wal.writeAt += uint32(plen)
+	mt.wal.zeroNextEntry()
+
+	if mt.opt.SyncWrites {
+		if err := mt.wal.Sync(); err != nil {
+			return valuePointer{}, y.Wrapf(err, "while syncing memtable wal")
+		}
+	}
+
+	return valuePointer{Fid: mt.wal.fid, Len: uint32(plen), Offset: start}, nil
 }
 
 func (mt *memTable) UpdateSkipList() error {
@@ -466,6 +504,7 @@ func (lf *logFile) iterate(readOnly bool, offset uint32, fn logEntry) (uint32, e
 
 	var entries []*Entry
 	var vptrs []valuePointer
+	intentEntries := make(map[uint64][]*Entry)
 
 loop:
 	for {
@@ -494,6 +533,18 @@ loop:
 		vp.Fid = lf.fid
 
 		switch {
+		case e.meta&bitTxnIntent > 0:
+			txnID, ok := parseTxnIntentKey(e.Key)
+			if !ok {
+				break loop
+			}
+			intent, ok := decodeTxnIntentValue(e.Value)
+			if !ok {
+				break loop
+			}
+			intentEntries[txnID] = append(intentEntries[txnID], intent)
+			validEndOffset = read.recordOffset
+
 		case e.meta&bitTxn > 0:
 			txnTs := y.ParseTs(e.Key)
 			if lastCommit == 0 {
@@ -506,8 +557,34 @@ loop:
 			vptrs = append(vptrs, vp)
 
 		case e.meta&bitFinTxn > 0:
-			txnTs, err := strconv.ParseUint(string(e.Value), 10, 64)
-			if err != nil || lastCommit != txnTs {
+			txnTs, txnID, ok := decodeTxnCommitValue(e.Value)
+			if !ok {
+				break loop
+			}
+			if txnID > 0 {
+				pending := intentEntries[txnID]
+				for _, ie := range pending {
+					ts := ie.version
+					if ts == 0 {
+						ts = txnTs
+					}
+					if ts == 0 {
+						continue
+					}
+					ie.Key = y.KeyWithTs(ie.Key, ts)
+					if err := fn(*ie, valuePointer{}); err != nil {
+						if err == errStop {
+							break
+						}
+						return 0, errFile(err, lf.path, "Iteration function")
+					}
+				}
+				delete(intentEntries, txnID)
+				validEndOffset = read.recordOffset
+				continue
+			}
+
+			if lastCommit != txnTs {
 				break loop
 			}
 			// Got the end of txn. Now we can store them.
