@@ -16,7 +16,6 @@ import (
 
 	fbs "github.com/google/flatbuffers/go"
 	"github.com/klauspost/compress/s2"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4/fb"
 	"github.com/dgraph-io/badger/v4/options"
@@ -467,7 +466,7 @@ func (b *Builder) calculateChecksum(data []byte) []byte {
 	}
 
 	// Write checksum to the file.
-	chksum, err := proto.Marshal(&checksum)
+	chksum, err := checksum.MarshalVT()
 	y.Check(err)
 	// Write checksum size.
 	return chksum

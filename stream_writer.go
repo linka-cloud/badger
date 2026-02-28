@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/dustin/go-humanize"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/table"
@@ -141,7 +140,7 @@ func (sw *StreamWriter) Write(buf *z.Buffer) error {
 
 	err := buf.SliceIterate(func(s []byte) error {
 		var kv pb.KV
-		if err := proto.Unmarshal(s, &kv); err != nil {
+		if err := kv.UnmarshalVT(s); err != nil {
 			return err
 		}
 		if kv.StreamDone {

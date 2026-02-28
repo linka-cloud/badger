@@ -18,8 +18,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
@@ -199,7 +197,7 @@ func (mf *manifestFile) addChanges(changesParam []*pb.ManifestChange, opt Option
 		return nil
 	}
 	changes := pb.ManifestChangeSet{Changes: changesParam}
-	buf, err := proto.Marshal(&changes)
+	buf, err := changes.MarshalVT()
 	if err != nil {
 		return err
 	}
@@ -261,7 +259,7 @@ func helpRewrite(dir string, m *Manifest, extMagic uint16) (*os.File, int, error
 	changes := m.asChanges()
 	set := pb.ManifestChangeSet{Changes: changes}
 
-	changeBuf, err := proto.Marshal(&set)
+	changeBuf, err := set.MarshalVT()
 	if err != nil {
 		fp.Close()
 		return nil, 0, err
@@ -414,7 +412,7 @@ func ReplayManifestFile(fp *os.File, extMagic uint16, opt Options) (Manifest, in
 		}
 
 		var changeSet pb.ManifestChangeSet
-		if err := proto.Unmarshal(buf, &changeSet); err != nil {
+		if err := changeSet.UnmarshalVT(buf); err != nil {
 			return Manifest{}, 0, err
 		}
 
