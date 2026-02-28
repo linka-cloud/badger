@@ -16,7 +16,6 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/pb"
@@ -204,7 +203,7 @@ func getSampleKeys(db *badger.DB, sampleSize int) ([][]byte, error) {
 		}
 		err := buf.SliceIterate(func(s []byte) error {
 			var kv pb.KV
-			if err := proto.Unmarshal(s, &kv); err != nil {
+			if err := kv.UnmarshalVT(s); err != nil {
 				return err
 			}
 			keys = append(keys, kv.Key)
