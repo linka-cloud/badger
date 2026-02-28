@@ -13,8 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	humanize "github.com/dustin/go-humanize"
-	"google.golang.org/protobuf/proto"
+	"github.com/dustin/go-humanize"
 
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
@@ -507,7 +506,7 @@ func BufferToKVList(buf *z.Buffer) (*pb.KVList, error) {
 	var list pb.KVList
 	err := buf.SliceIterate(func(s []byte) error {
 		kv := new(pb.KV)
-		if err := proto.Unmarshal(s, kv); err != nil {
+		if err := kv.UnmarshalVT(s); err != nil {
 			return err
 		}
 		list.Kv = append(list.Kv, kv)
@@ -517,7 +516,7 @@ func BufferToKVList(buf *z.Buffer) (*pb.KVList, error) {
 }
 
 func KVToBuffer(kv *pb.KV, buf *z.Buffer) {
-	in := buf.SliceAllocate(proto.Size(kv))[:0]
-	_, err := proto.MarshalOptions{}.MarshalAppend(in, kv)
+	in := buf.SliceAllocate(kv.SizeVT())[:0]
+	_, err := kv.MarshalToVT(in)
 	y.AssertTrue(err == nil)
 }

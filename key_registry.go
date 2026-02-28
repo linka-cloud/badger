@@ -19,7 +19,6 @@ import (
 
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -36,7 +35,7 @@ var sanityText = []byte("Hello Badger")
 type KeyRegistry struct {
 	sync.RWMutex
 	dataKeys    map[uint64]*pb.DataKey
-	lastCreated int64 //lastCreated is the timestamp(seconds) of the last data key generated.
+	lastCreated int64 // lastCreated is the timestamp(seconds) of the last data key generated.
 	nextKeyID   uint64
 	fp          *os.File
 	opt         KeyRegistryOptions
@@ -185,7 +184,7 @@ func (kri *keyRegistryIterator) next() (*pb.DataKey, error) {
 		return nil, y.Wrapf(y.ErrChecksumMismatch, "Error while checking checksum for data key.")
 	}
 	dataKey := &pb.DataKey{}
-	if err = proto.Unmarshal(data, dataKey); err != nil {
+	if err = dataKey.UnmarshalVT(data); err != nil {
 		return nil, y.Wrapf(err, "While unmarshal of datakey in keyRegistryIterator.next")
 	}
 	if len(kri.encryptionKey) > 0 {
@@ -394,7 +393,7 @@ func storeDataKey(buf *bytes.Buffer, storageKey []byte, k *pb.DataKey) error {
 		return y.Wrapf(err, "Error while encrypting datakey in storeDataKey")
 	}
 	var data []byte
-	if data, err = proto.Marshal(k); err != nil {
+	if data, err = k.MarshalVT(); err != nil {
 		err = y.Wrapf(err, "Error while marshaling datakey in storeDataKey")
 		var err2 error
 		// decrypting the datakey back.
