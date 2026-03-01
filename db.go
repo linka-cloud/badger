@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	humanize "github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize"
 
 	"github.com/dgraph-io/ristretto/v2"
 	"github.com/dgraph-io/ristretto/v2/z"
@@ -165,7 +165,8 @@ func (lk *lockedKeys) all() []uint64 {
 type DB struct {
 	testOnlyDBExtensions
 
-	lock sync.RWMutex // Guards list of inmemory tables, not individual reads and writes.
+	lock        sync.RWMutex // Guards list of inmemory tables, not individual reads and writes.
+	replication WALReplication
 
 	dirLockGuard *directoryLockGuard
 	// nil if Dir and ValueDir are the same
@@ -179,14 +180,16 @@ type DB struct {
 	// Initialized via openMemTables.
 	nextMemFid int
 
-	opt       Options
-	manifest  *manifestFile
-	lc        *levelsController
-	vlog      valueLog
-	wal       wal
-	writeCh   chan *request
-	flushChan chan *memTable // For flushing memtables.
-	closeOnce sync.Once      // For closing DB only once.
+	opt        Options
+	replCtx    context.Context
+	replCancel context.CancelFunc
+	manifest   *manifestFile
+	lc         *levelsController
+	vlog       valueLog
+	wal        wal
+	writeCh    chan *request
+	flushChan  chan *memTable // For flushing memtables.
+	closeOnce  sync.Once      // For closing DB only once.
 
 	blockWrites atomic.Int32
 	isClosed    atomic.Uint32
@@ -208,6 +211,10 @@ const (
 )
 
 func checkAndSetOptions(opt *Options) error {
+	if !opt.EnableWAL && opt.Replication != nil && opt.Replication.Role() == ReplicationRoleReplica {
+		return ErrReplicationRequiresWAL
+	}
+
 	// It's okay to have zero compactors which will disable all compactions but
 	// we cannot have just one compactor otherwise we will end up with all data
 	// on level 2.
@@ -329,6 +336,8 @@ func Open(opt Options) (*DB, error) {
 		bannedNamespaces: &lockedKeys{keys: make(map[uint64]struct{})},
 		threshold:        initVlogThreshold(&opt),
 	}
+	db.replCtx, db.replCancel = context.WithCancel(context.Background())
+	db.replication.init(db)
 
 	db.syncChan = opt.syncChan
 
@@ -488,6 +497,12 @@ func Open(opt Options) (*DB, error) {
 	db.closers.pub = z.NewCloser(1)
 	go db.pub.listenForUpdates(db.closers.pub)
 
+	if db.opt.Replication != nil {
+		if err := db.opt.Replication.Start(db.replCtx, db); err != nil {
+			return nil, y.Wrap(err, "while starting replication runtime")
+		}
+	}
+
 	valueDirLockGuard = nil
 	dirLockGuard = nil
 	manifestFile = nil
@@ -575,6 +590,9 @@ func (db *DB) monitorCache(c *z.Closer) {
 // cleanup stops all the goroutines started by badger. This is used in open to
 // cleanup goroutines in case of an error.
 func (db *DB) cleanup() {
+	if db.replCancel != nil {
+		db.replCancel()
+	}
 	db.stopMemoryFlush()
 	db.stopCompactions()
 
@@ -639,6 +657,9 @@ func (db *DB) close() (err error) {
 
 	db.blockWrites.Store(1)
 	db.isClosed.Store(1)
+	if db.replCancel != nil {
+		db.replCancel()
+	}
 
 	if !db.opt.InMemory && !db.opt.EnableWAL {
 		// Stop value GC first.
@@ -788,12 +809,13 @@ func (db *DB) Sync() error {
 	return y.CombineErrors(memtableSyncError, vLogSyncError)
 }
 
-// WALLSN returns the latest durable and applied wal positions.
-func (db *DB) WALLSN() (durable valuePointer, applied valuePointer) {
+// WALLSN returns the latest durable and applied WAL cursors.
+func (db *DB) WALLSN() (durable WALCursor, applied WALCursor) {
 	if !db.opt.EnableWAL {
-		return valuePointer{}, valuePointer{}
+		return WALCursor{}, WALCursor{}
 	}
-	return db.wal.lsn()
+	d, a := db.wal.lsn()
+	return walCursorFromValuePointer(d), walCursorFromValuePointer(a)
 }
 
 func (db *DB) noteManifestDurable() {
@@ -1217,6 +1239,9 @@ func (db *DB) writeRequests(reqs []*request) error {
 }
 
 func (db *DB) sendToWriteCh(entries []*Entry) (*request, error) {
+	if db.replication.isReplica() {
+		return nil, ErrReadOnlyReplica
+	}
 	if db.blockWrites.Load() == 1 {
 		return nil, ErrBlockedWrites
 	}
@@ -1589,7 +1614,9 @@ func (db *DB) RunValueLogGC(discardRatio float64) error {
 // GC runs at a time; concurrent calls return ErrRejected.
 //
 // If no WAL file can be compacted, ErrNoRewrite is returned.
-// discardRatio must be in range (0.0, 1.0), both endpoints excluded.
+// discardRatio is evaluated against the fraction of eligible WAL files
+// (eligible_files / total_files) and must be in range (0.0, 1.0), both
+// endpoints excluded.
 func (db *DB) RunWALGC(discardRatio float64) error {
 	if db.opt.InMemory {
 		return ErrGCInMemoryMode
@@ -1599,6 +1626,9 @@ func (db *DB) RunWALGC(discardRatio float64) error {
 	}
 	if !db.opt.EnableWAL {
 		return ErrInvalidRequest
+	}
+	if db.replication.isReplica() {
+		return ErrReadOnlyReplica
 	}
 	if db.IsClosed() {
 		return ErrRejected

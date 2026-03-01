@@ -21,7 +21,7 @@ import (
 const walFileExt = ".wal"
 const walSafePointFile = "WAL-SAFEPOINT"
 
-var walCheckpointKey = append(append([]byte{}, badgerPrefix...), []byte("wal-checkpoint")...)
+var walCheckpointKey = []byte("!badger!wal-checkpoint")
 
 type wal struct {
 	db *DB
@@ -36,6 +36,8 @@ type wal struct {
 	appliedLSN         valuePointer
 	replicationSafeLSN valuePointer
 	manifestSafeLSN    valuePointer
+	nextStreamSubID    uint64
+	streamSubscribers  map[uint64]chan *WALFrame
 
 	garbageCh          chan struct{}
 	numActiveIterators int32
@@ -57,6 +59,7 @@ func (l *wal) init(db *DB) error {
 	}
 
 	l.files = make(map[uint32]*logFile)
+	l.streamSubscribers = make(map[uint64]chan *WALFrame)
 	l.garbageCh = make(chan struct{}, 1)
 	if err := l.populateFilesMap(); err != nil {
 		return err
@@ -119,7 +122,7 @@ func (l *wal) persistManifestSafePoint(vp valuePointer) error {
 		return y.Wrap(err, "while renaming wal safe point file")
 	}
 	l.manifestSafeLSN = vp
-	l.publishLSNMetricsLocked()
+	l.publishLSNMetrics()
 	return nil
 }
 
@@ -135,7 +138,9 @@ func (l *wal) updateManifestSafePointFromApplied() error {
 	return l.persistManifestSafePoint(l.appliedLSN)
 }
 
-func (l *wal) pruneCutoffLSNLocked() valuePointer {
+// pruneCutoffLSN computes the prune cutoff cursor.
+// Caller must hold l.mu.
+func (l *wal) pruneCutoffLSN() valuePointer {
 	cutoff := l.manifestSafeLSN
 	if cutoff.IsZero() {
 		return valuePointer{}
@@ -149,12 +154,14 @@ func (l *wal) pruneCutoffLSNLocked() valuePointer {
 	return cutoff
 }
 
-func (l *wal) pruneLocked() error {
+// prune removes WAL files older than the prune cutoff.
+// Caller must hold l.mu.
+func (l *wal) prune() error {
 	if !l.enabled() || l.db.opt.ReadOnly {
 		return nil
 	}
 
-	cutoff := l.pruneCutoffLSNLocked()
+	cutoff := l.pruneCutoffLSN()
 	if cutoff.IsZero() || cutoff.Fid <= 1 {
 		return nil
 	}
@@ -182,6 +189,22 @@ func (l *wal) pruneLocked() error {
 		l.db.opt.Infof("WAL checkpoint prune: cutoff_fid=%d removed_files=%d", cutoff.Fid, removed)
 	}
 	return nil
+}
+
+// minRetainCursor returns the minimum source WAL cursor to retain.
+// Caller must hold l.mu.
+func (l *wal) minRetainCursor() WALCursor {
+	cutoff := l.pruneCutoffLSN()
+	if cutoff.IsZero() || cutoff.Fid <= 1 {
+		return WALCursor{}
+	}
+	return walCursorFromValuePointer(cutoff)
+}
+
+func (l *wal) minRetainCursorSnapshot() WALCursor {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.minRetainCursor()
 }
 
 func (l *wal) deleteLogFile(lf *logFile) error {
@@ -241,7 +264,7 @@ func (l *wal) pickCompactionFile(excluded map[uint32]struct{}) *logFile {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	cutoff := l.pruneCutoffLSNLocked()
+	cutoff := l.pruneCutoffLSN()
 	if cutoff.IsZero() || cutoff.Fid <= 1 {
 		return nil
 	}
@@ -291,31 +314,42 @@ func (l *wal) shouldRewriteEntry(e Entry, vp valuePointer) (bool, string, error)
 	return true, "", nil
 }
 
-func (l *wal) estimateDiscardRatio(lf *logFile) (float64, int64, int64, error) {
-	if lf == nil {
-		return 0, 0, 0, ErrNoRewrite
+func (l *wal) compactionFileStats(excluded map[uint32]struct{}) (eligible, total int, ratio float64) {
+	if !l.enabled() || l.db.opt.ReadOnly {
+		return 0, 0, 0
 	}
-	var scannedBytes int64
-	var movedBytes int64
-	_, err := lf.iterate(true, 0, func(e Entry, vp valuePointer) error {
-		scannedBytes += int64(vp.Len)
-		move, _, err := l.shouldRewriteEntry(e, vp)
-		if err != nil {
-			return err
+
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	total = len(l.files)
+	if total == 0 {
+		return 0, 0, 0
+	}
+
+	cutoff := l.pruneCutoffLSN()
+	if cutoff.IsZero() || cutoff.Fid <= 1 {
+		return 0, total, 0
+	}
+
+	for _, fid := range l.sortedFids() {
+		if fid >= cutoff.Fid {
+			break
 		}
-		if move {
-			movedBytes += int64(vp.Len)
+		if _, skip := excluded[fid]; skip {
+			continue
 		}
-		return nil
-	})
-	if err != nil {
-		return 0, 0, 0, err
+		if fid >= l.maxFid {
+			continue
+		}
+		if l.files[fid] != nil {
+			eligible++
+		}
 	}
-	if scannedBytes == 0 {
-		return 1.0, 0, 0, nil
+	if total > 0 {
+		ratio = float64(eligible) / float64(total)
 	}
-	discard := float64(scannedBytes-movedBytes) / float64(scannedBytes)
-	return discard, scannedBytes, movedBytes, nil
+	return eligible, total, ratio
 }
 
 func (l *wal) rewrite(lf *logFile) error {
@@ -430,31 +464,37 @@ func (l *wal) runGC(discardRatio float64) error {
 			return err
 		}
 		processed := 0
-		skippedByRatio := 0
 		excluded := make(map[uint32]struct{})
 		for {
+			eligible, total, fileRatio := l.compactionFileStats(excluded)
+			if eligible == 0 {
+				if processed == 0 {
+					l.db.opt.Infof("WAL GC no rewrite candidate after %s (eligible_files=0 total_files=%d)", time.Since(start).Truncate(time.Millisecond), total)
+					return ErrNoRewrite
+				}
+				l.db.opt.Infof("WAL GC done in %s; compacted_files=%d eligible_files=0 total_files=%d", time.Since(start).Truncate(time.Millisecond), processed, total)
+				return nil
+			}
+			if fileRatio < discardRatio {
+				if processed == 0 {
+					l.db.opt.Infof("WAL GC skipped by file ratio after %s (eligible_files=%d total_files=%d file_ratio=%.4f required=%.4f)", time.Since(start).Truncate(time.Millisecond), eligible, total, fileRatio, discardRatio)
+					return ErrNoRewrite
+				}
+				l.db.opt.Infof("WAL GC done in %s; compacted_files=%d eligible_files=%d total_files=%d file_ratio=%.4f required=%.4f", time.Since(start).Truncate(time.Millisecond), processed, eligible, total, fileRatio, discardRatio)
+				return nil
+			}
+
 			lf := l.pickCompactionFile(excluded)
 			if lf == nil {
 				if processed == 0 {
-					l.db.opt.Infof("WAL GC no rewrite candidate after %s (skipped_by_ratio=%d)", time.Since(start).Truncate(time.Millisecond), skippedByRatio)
+					l.db.opt.Infof("WAL GC no rewrite candidate after %s (eligible_files=%d total_files=%d)", time.Since(start).Truncate(time.Millisecond), eligible, total)
 					return ErrNoRewrite
 				}
-				l.db.opt.Infof("WAL GC done in %s; compacted_files=%d skipped_by_ratio=%d", time.Since(start).Truncate(time.Millisecond), processed, skippedByRatio)
+				l.db.opt.Infof("WAL GC done in %s; compacted_files=%d eligible_files=%d total_files=%d", time.Since(start).Truncate(time.Millisecond), processed, eligible, total)
 				return nil
 			}
-			discard, scannedBytes, movedBytes, err := l.estimateDiscardRatio(lf)
-			if err != nil {
-				l.db.opt.Warningf("WAL GC estimation failed on fid=%d after %s: %v", lf.fid, time.Since(start).Truncate(time.Millisecond), err)
-				return err
-			}
-			if discard < discardRatio {
-				skippedByRatio++
-				excluded[lf.fid] = struct{}{}
-				l.db.opt.Infof("WAL GC skipped candidate: fid=%d discard_ratio=%.4f required=%.4f scanned_bytes=%d moved_bytes=%d", lf.fid, discard, discardRatio, scannedBytes, movedBytes)
-				continue
-			}
-			l.db.opt.Infof("WAL GC picked candidate: fid=%d", lf.fid)
-			err = l.rewrite(lf)
+			l.db.opt.Infof("WAL GC picked candidate: fid=%d eligible_files=%d total_files=%d file_ratio=%.4f required=%.4f", lf.fid, eligible, total, fileRatio, discardRatio)
+			err := l.rewrite(lf)
 			if err != nil {
 				l.db.opt.Warningf("WAL GC failed on fid=%d after %s: %v", lf.fid, time.Since(start).Truncate(time.Millisecond), err)
 				return err
@@ -517,10 +557,46 @@ func (l *wal) createFile(fid uint32) (*logFile, error) {
 	if err != nil && err != z.NewFile {
 		return nil, y.Wrapf(err, "while creating wal file: %s", lf.path)
 	}
+	if err == z.NewFile {
+		if e := l.setDeterministicWALFileHeader(lf); e != nil {
+			return nil, e
+		}
+	}
 	lf.writeAt = vlogHeaderSize
 	l.files[fid] = lf
 	l.maxFid = fid
 	return lf, nil
+}
+
+func (l *wal) setDeterministicWALFileHeader(lf *logFile) error {
+	if lf == nil || len(lf.Data) < vlogHeaderSize {
+		return nil
+	}
+	iv := deterministicWALBaseIV(lf.fid)
+	copy(lf.Data[8:20], iv[:])
+	lf.baseIV = lf.Data[8:20]
+	if l.db.opt.SyncWrites {
+		if err := lf.Sync(); err != nil {
+			return y.Wrapf(err, "while syncing wal header")
+		}
+	}
+	return nil
+}
+
+func deterministicWALBaseIV(fid uint32) [12]byte {
+	var iv [12]byte
+	iv[0] = byte(fid >> 24)
+	iv[1] = byte(fid >> 16)
+	iv[2] = byte(fid >> 8)
+	iv[3] = byte(fid)
+	x := uint64(fid)*0x9e3779b97f4a7c15 + 0xd1b54a32d192ed03
+	for i := 4; i < 12; i++ {
+		x ^= x << 13
+		x ^= x >> 7
+		x ^= x << 17
+		iv[i] = byte(x)
+	}
+	return iv
 }
 
 func (l *wal) append(e *Entry) (valuePointer, error) {
@@ -530,10 +606,30 @@ func (l *wal) append(e *Entry) (valuePointer, error) {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.appendLocked(e)
+	return l.doAppend(e)
 }
 
-func (l *wal) appendLocked(e *Entry) (valuePointer, error) {
+func (l *wal) appendReplicatedAtLSN(e *Entry, expected WALCursor) (valuePointer, error) {
+	if !l.enabled() {
+		return valuePointer{}, nil
+	}
+	if e == nil {
+		return valuePointer{}, stderrors.New("nil wal entry")
+	}
+	if expected.IsZero() {
+		return valuePointer{}, stderrors.New("missing expected wal cursor")
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	expectedVP := valuePointerFromWALCursor(expected)
+	return l.doAppendAtLSN(e, expectedVP)
+}
+
+// doAppend appends one WAL entry to the active WAL file.
+// Caller must hold l.mu.
+func (l *wal) doAppend(e *Entry) (valuePointer, error) {
 	if !l.enabled() {
 		return valuePointer{}, nil
 	}
@@ -570,7 +666,9 @@ func (l *wal) appendLocked(e *Entry) (valuePointer, error) {
 		lf.zeroNextEntry()
 		lsn := valuePointer{Fid: lf.fid, Len: uint32(plen), Offset: start}
 		l.lastAppendLSN = lsn
-		if l.db.opt.SyncWrites {
+		// In sync write mode, flush WAL once per commit marker instead of per frame.
+		// The commit frame durability implies durability for all prior frames in the same file.
+		if l.db.opt.SyncWrites && (e.meta&bitFinTxn > 0 || e.meta&bitTxnIntent == 0) {
 			if err := lf.Sync(); err != nil {
 				return valuePointer{}, y.Wrapf(err, "while syncing wal")
 			}
@@ -580,9 +678,213 @@ func (l *wal) appendLocked(e *Entry) (valuePointer, error) {
 			y.NumWritesVlogAdd(l.db.opt.MetricsEnabled, 1)
 			y.NumBytesWrittenVlogAdd(l.db.opt.MetricsEnabled, int64(plen))
 		}
-		l.publishLSNMetricsLocked()
+		frame := newWALFrameFromEntry(*e, lsn)
+		if frame != nil && frame.Type == WALFrameCheckpoint {
+			mr := l.minRetainCursor()
+			if !mr.IsZero() {
+				frame.MinRetainCursor = walCursorToPB(mr)
+			}
+		}
+		if l.db.replication.isReplica() {
+			l.publishStreamFrame(frame)
+			l.publishLSNMetrics()
+			return lsn, nil
+		}
+		if err := l.db.replication.replicate(l.db.replCtx, frame); err != nil {
+			return valuePointer{}, err
+		}
+		l.publishStreamFrame(frame)
+		l.publishLSNMetrics()
 		return lsn, nil
 	}
+}
+
+// doAppendAtLSN appends one WAL entry at the exact expected cursor.
+// Caller must hold l.mu.
+func (l *wal) doAppendAtLSN(e *Entry, expected valuePointer) (valuePointer, error) {
+	if !l.enabled() {
+		return valuePointer{}, nil
+	}
+	if expected.IsZero() {
+		return valuePointer{}, stderrors.New("missing expected wal cursor")
+	}
+	if expected.Offset < uint32(vlogHeaderSize) {
+		return valuePointer{}, fmt.Errorf("invalid WAL offset %d for fid=%d", expected.Offset, expected.Fid)
+	}
+
+	lf := l.files[expected.Fid]
+	if lf != nil {
+		shouldCheckExisting := expected.Fid < l.maxFid || (expected.Fid == l.maxFid && expected.Offset < lf.writeAt)
+		if shouldCheckExisting {
+			match, err := l.entryMatchesAt(lf, expected, e)
+			if err != nil {
+				return valuePointer{}, err
+			}
+			if match {
+				return expected, nil
+			}
+		}
+	}
+	if lf == nil {
+		if expected.Fid < l.maxFid {
+			return valuePointer{}, fmt.Errorf("expected WAL fid %d behind current fid %d", expected.Fid, l.maxFid)
+		}
+		if cur := l.files[l.maxFid]; cur != nil && cur.fid != expected.Fid {
+			if err := cur.doneWriting(cur.writeAt); err != nil {
+				return valuePointer{}, err
+			}
+		}
+		var err error
+		lf, err = l.createFile(expected.Fid)
+		if err != nil {
+			return valuePointer{}, err
+		}
+	}
+	if lf.fid != l.maxFid {
+		return valuePointer{}, fmt.Errorf("expected active WAL fid %d, got %d", expected.Fid, l.maxFid)
+	}
+	if lf.writeAt != expected.Offset {
+		if lf.writeAt < expected.Offset {
+			endOff, err := l.fileEndOffset(lf)
+			if err != nil {
+				return valuePointer{}, err
+			}
+			if endOff > lf.writeAt {
+				lf.writeAt = endOff
+				if lf.writeAt == expected.Offset {
+					goto appendAtExpected
+				}
+			} else if lf.writeAt == uint32(vlogHeaderSize) {
+				// Snapshot bootstrap can legitimately resume from a mid-file cursor
+				// while the local WAL file is still empty. Allow advancing writeAt
+				// to the expected offset in that case.
+				lf.writeAt = expected.Offset
+				goto appendAtExpected
+			}
+		}
+		return valuePointer{}, fmt.Errorf("wal offset mismatch for fid %d: expected=%d actual=%d", expected.Fid, expected.Offset, lf.writeAt)
+	}
+
+appendAtExpected:
+
+	l.buf.Reset()
+	plen, err := lf.encodeEntry(&l.buf, e, lf.writeAt)
+	if err != nil {
+		return valuePointer{}, err
+	}
+	if uint32(plen) != expected.Len {
+		return valuePointer{}, fmt.Errorf("wal length mismatch for fid %d offset %d: expected=%d actual=%d", expected.Fid, expected.Offset, expected.Len, plen)
+	}
+	required := int(lf.writeAt) + plen + maxHeaderSize
+	if required >= len(lf.Data) {
+		if err := l.ensureWritableCapacity(lf, required+1); err != nil {
+			return valuePointer{}, err
+		}
+		if required >= len(lf.Data) {
+			return valuePointer{}, fmt.Errorf("wal entry exceeds file bounds at fid %d offset %d", expected.Fid, expected.Offset)
+		}
+	}
+
+	start := lf.writeAt
+	y.AssertTrue(plen == copy(lf.Data[lf.writeAt:], l.buf.Bytes()))
+	lf.writeAt += uint32(plen)
+	lf.zeroNextEntry()
+	lsn := valuePointer{Fid: lf.fid, Len: uint32(plen), Offset: start}
+	if lsn.Fid != expected.Fid || lsn.Offset != expected.Offset || lsn.Len != expected.Len {
+		return valuePointer{}, fmt.Errorf("wal cursor mismatch: expected=(fid=%d offset=%d len=%d) actual=(fid=%d offset=%d len=%d)",
+			expected.Fid, expected.Offset, expected.Len, lsn.Fid, lsn.Offset, lsn.Len)
+	}
+	l.lastAppendLSN = lsn
+	if l.db.opt.SyncWrites && (e.meta&bitFinTxn > 0 || e.meta&bitTxnIntent == 0) {
+		if err := lf.Sync(); err != nil {
+			return valuePointer{}, y.Wrapf(err, "while syncing wal")
+		}
+		l.durableLSN = lsn
+	}
+	if e.meta&bitFinTxn == 0 {
+		y.NumWritesVlogAdd(l.db.opt.MetricsEnabled, 1)
+		y.NumBytesWrittenVlogAdd(l.db.opt.MetricsEnabled, int64(plen))
+	}
+	frame := newWALFrameFromEntry(*e, lsn)
+	if frame != nil && frame.Type == WALFrameCheckpoint {
+		mr := l.minRetainCursor()
+		if !mr.IsZero() {
+			frame.MinRetainCursor = walCursorToPB(mr)
+		}
+	}
+	l.publishStreamFrame(frame)
+	l.publishLSNMetrics()
+	return lsn, nil
+}
+
+// Caller must hold l.mu.
+func (l *wal) ensureWritableCapacity(lf *logFile, needed int) error {
+	if lf == nil || needed <= len(lf.Data) {
+		return nil
+	}
+	newSize := len(lf.Data)
+	if newSize <= 0 {
+		newSize = int(vlogHeaderSize)
+	}
+	for newSize < needed {
+		newSize *= 2
+	}
+	minSize := int(2 * l.db.opt.ValueLogFileSize)
+	if minSize > newSize {
+		newSize = minSize
+	}
+	lf.lock.Lock()
+	defer lf.lock.Unlock()
+	if needed <= len(lf.Data) {
+		return nil
+	}
+	if err := lf.Truncate(int64(newSize)); err != nil {
+		return y.Wrapf(err, "while expanding wal file: %s", lf.path)
+	}
+	return nil
+}
+
+// Caller must hold l.mu.
+func (l *wal) fileEndOffset(lf *logFile) (uint32, error) {
+	if lf == nil {
+		return uint32(vlogHeaderSize), nil
+	}
+	lf.lock.RLock()
+	defer lf.lock.RUnlock()
+	return lf.iterate(true, uint32(vlogHeaderSize), func(Entry, valuePointer) error { return nil })
+}
+
+// Caller must hold l.mu.
+func (l *wal) entryMatchesAt(lf *logFile, expected valuePointer, e *Entry) (bool, error) {
+	if lf == nil || e == nil || expected.IsZero() {
+		return false, nil
+	}
+	lf.lock.RLock()
+	defer lf.lock.RUnlock()
+	buf, err := lf.read(expected)
+	if err != nil {
+		if err == y.ErrEOF {
+			return false, nil
+		}
+		return false, err
+	}
+	existing, err := lf.decodeEntry(buf, expected.Offset)
+	if err != nil {
+		if err == errTruncate {
+			return false, nil
+		}
+		return false, err
+	}
+	if existing == nil {
+		return false, nil
+	}
+	if existing.meta != e.meta || existing.UserMeta != e.UserMeta || existing.ExpiresAt != e.ExpiresAt {
+		return false, nil
+	}
+	if !bytes.Equal(existing.Key, e.Key) || !bytes.Equal(existing.Value, e.Value) {
+		return false, nil
+	}
+	return true, nil
 }
 
 func isWalCheckpointEntry(e Entry) bool {
@@ -641,6 +943,7 @@ func (l *wal) Close() error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closeAllStreamSubscribers()
 
 	var fids []int
 	for fid := range l.files {
@@ -679,7 +982,7 @@ func (l *wal) sync() error {
 	}
 	l.mu.Lock()
 	l.durableLSN = l.lastAppendLSN
-	l.publishLSNMetricsLocked()
+	l.publishLSNMetrics()
 	l.mu.Unlock()
 	return nil
 }
@@ -692,7 +995,7 @@ func (l *wal) markApplied(vp valuePointer) {
 	defer l.mu.Unlock()
 	if l.appliedLSN.Less(vp) {
 		l.appliedLSN = vp
-		l.publishLSNMetricsLocked()
+		l.publishLSNMetrics()
 	}
 }
 
@@ -705,18 +1008,9 @@ func (l *wal) lsn() (valuePointer, valuePointer) {
 	return l.durableLSN, l.appliedLSN
 }
 
-func (l *wal) setReplicationSafeLSN(vp valuePointer) {
-	if !l.enabled() || vp.IsZero() {
-		return
-	}
-	l.mu.Lock()
-	if l.replicationSafeLSN.Less(vp) {
-		l.replicationSafeLSN = vp
-	}
-	l.mu.Unlock()
-}
-
-func (l *wal) publishLSNMetricsLocked() {
+// publishLSNMetrics updates WAL cursor metrics.
+// Caller must hold l.mu.
+func (l *wal) publishLSNMetrics() {
 	base := l.db.opt.ValueDir
 	y.WALLSNSet(l.db.opt.MetricsEnabled, base+":durable_fid", int64(l.durableLSN.Fid))
 	y.WALLSNSet(l.db.opt.MetricsEnabled, base+":durable_offset", int64(l.durableLSN.Offset))
@@ -735,6 +1029,55 @@ func (l *wal) sortedFids() []uint32 {
 		return fids[i] < fids[j]
 	})
 	return fids
+}
+
+func (l *wal) addStreamSubscriber() (uint64, <-chan *WALFrame, valuePointer) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.streamSubscribers == nil {
+		l.streamSubscribers = make(map[uint64]chan *WALFrame)
+	}
+	id := l.nextStreamSubID
+	l.nextStreamSubID++
+	ch := make(chan *WALFrame, 1024)
+	l.streamSubscribers[id] = ch
+	return id, ch, l.lastAppendLSN
+}
+
+func (l *wal) removeStreamSubscriber(id uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ch, ok := l.streamSubscribers[id]
+	if !ok {
+		return
+	}
+	delete(l.streamSubscribers, id)
+	close(ch)
+}
+
+// closeAllStreamSubscribers closes and removes all WAL stream subscribers.
+// Caller must hold l.mu.
+func (l *wal) closeAllStreamSubscribers() {
+	for id, ch := range l.streamSubscribers {
+		delete(l.streamSubscribers, id)
+		close(ch)
+	}
+}
+
+// publishStreamFrame fans out one frame to all current WAL subscribers.
+// Caller must hold l.mu.
+func (l *wal) publishStreamFrame(frame *WALFrame) {
+	if frame == nil || len(l.streamSubscribers) == 0 {
+		return
+	}
+	for id, ch := range l.streamSubscribers {
+		select {
+		case ch <- frame:
+		default:
+			delete(l.streamSubscribers, id)
+			close(ch)
+		}
+	}
 }
 
 func (l *wal) replay() error {
@@ -925,7 +1268,7 @@ func (l *wal) checkpoint() error {
 	if err != nil {
 		return err
 	}
-	vp, err := l.appendLocked(&Entry{Key: walCheckpointKey, Value: []byte{1}})
+	vp, err := l.doAppend(&Entry{Key: walCheckpointKey, Value: []byte{1}})
 	if err != nil {
 		return err
 	}
@@ -935,13 +1278,15 @@ func (l *wal) checkpoint() error {
 	return nil
 }
 
-func (l *wal) resetLSNLocked() {
+// resetLSN clears in-memory WAL cursor state.
+// Caller must hold l.mu.
+func (l *wal) resetLSN() {
 	l.lastAppendLSN = valuePointer{}
 	l.durableLSN = valuePointer{}
 	l.appliedLSN = valuePointer{}
 	l.replicationSafeLSN = valuePointer{}
 	l.manifestSafeLSN = valuePointer{}
-	l.publishLSNMetricsLocked()
+	l.publishLSNMetrics()
 }
 
 func (l *wal) dropAll() (int, error) {
@@ -964,7 +1309,7 @@ func (l *wal) dropAll() (int, error) {
 	}
 	l.files = make(map[uint32]*logFile)
 	l.maxFid = 0
-	l.resetLSNLocked()
+	l.resetLSN()
 	if err := os.Remove(l.safePointPath()); err != nil && !os.IsNotExist(err) {
 		return count, err
 	}
@@ -976,4 +1321,40 @@ func (l *wal) dropAll() (int, error) {
 		return count, err
 	}
 	return count, nil
+}
+
+func (l *wal) pruneBeforeFid(minRetainFid uint32) error {
+	if !l.enabled() || l.db.opt.ReadOnly || minRetainFid <= 1 {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	toDeleteNow := make([]*logFile, 0)
+	for _, fid := range l.sortedFids() {
+		if fid >= minRetainFid {
+			break
+		}
+		if fid >= l.maxFid {
+			continue
+		}
+		lf := l.files[fid]
+		if lf == nil {
+			continue
+		}
+		if l.iteratorCount() == 0 {
+			delete(l.files, fid)
+			toDeleteNow = append(toDeleteNow, lf)
+		} else {
+			l.filesToBeDeleted = append(l.filesToBeDeleted, fid)
+		}
+	}
+
+	for _, lf := range toDeleteNow {
+		if err := l.deleteLogFile(lf); err != nil {
+			return err
+		}
+	}
+	return nil
 }

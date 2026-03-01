@@ -106,6 +106,9 @@ type Options struct {
 	// one persisted on disk. This is intended for explicit migrations only.
 	AllowWALModeSwitch bool
 
+	// Replication controls runtime role policy and WAL frame replication hooks.
+	Replication Replication
+
 	// NamespaceOffset specifies the offset from where the next 8 bytes contains the namespace.
 	NamespaceOffset int
 
@@ -782,6 +785,12 @@ func (opt Options) WithWAL(b bool) Options {
 // mode persisted in WAL-MODE marker file.
 func (opt Options) WithAllowWALModeSwitch(b bool) Options {
 	opt.AllowWALModeSwitch = b
+	return opt
+}
+
+// WithReplication returns a new Options value with Replication set to the given runtime.
+func (opt Options) WithReplication(r Replication) Options {
+	opt.Replication = r
 	return opt
 }
 

@@ -121,4 +121,18 @@ var (
 	// ErrWALModeMismatch is returned when the requested WAL mode differs from
 	// the one stored on disk.
 	ErrWALModeMismatch = stderrors.New("WAL mode mismatch")
+
+	// ErrWALCursorCompacted is returned when requested WAL streaming start
+	// cursor is older than the retained WAL window.
+	ErrWALCursorCompacted = stderrors.New("requested WAL cursor has been compacted")
+
+	// ErrReadOnlyReplica is returned when a user write is attempted on a replica role.
+	ErrReadOnlyReplica = stderrors.New("writes are not allowed in replica role")
+
+	// ErrPrimaryRoleApply is returned when replication apply is attempted on a primary role.
+	ErrPrimaryRoleApply = stderrors.New("replication apply requires replica role")
+
+	// ErrReplicationRequiresWAL is returned when replication is configured in
+	// replica role but WAL mode is disabled.
+	ErrReplicationRequiresWAL = stderrors.New("replication requires WAL mode")
 )
