@@ -398,8 +398,8 @@ func storeDataKey(buf *bytes.Buffer, storageKey []byte, k *pb.DataKey) error {
 		var err2 error
 		// decrypting the datakey back.
 		if err2 = xor(); err2 != nil {
-			return y.Wrapf(err,
-				y.Wrapf(err2, "Error while decrypting datakey in storeDataKey").Error())
+			return y.Wrap(err,
+				y.Wrap(err2, "Error while decrypting datakey in storeDataKey").Error())
 		}
 		return err
 	}

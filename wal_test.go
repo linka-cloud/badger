@@ -18,6 +18,7 @@ package badger
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -652,6 +653,52 @@ func TestRunWALGCRejectsInvalidRatio(t *testing.T) {
 	require.NoError(t, db.Close())
 }
 
+func TestRunWALGCRejectedOnReplicaRole(t *testing.T) {
+	dir, err := os.MkdirTemp("", "badger-walgc-replica")
+	require.NoError(t, err)
+	defer removeDir(dir)
+
+	db, err := Open(getTestOptions(dir).WithWAL(true).WithSyncWrites(true).
+		WithReplication(&testReplicationRuntime{role: ReplicationRoleReplica}))
+	require.NoError(t, err)
+	require.ErrorIs(t, db.RunWALGC(0.0001), ErrReadOnlyReplica)
+	require.NoError(t, db.Close())
+}
+
+func TestRunWALGCUsesEligibleFileRatio(t *testing.T) {
+	dir, err := os.MkdirTemp("", "badger-walgc-file-ratio")
+	require.NoError(t, err)
+	defer removeDir(dir)
+
+	opt := getTestOptions(dir).
+		WithWAL(true).
+		WithSyncWrites(true)
+	opt.ValueThreshold = 0
+	opt.ValueLogFileSize = 1 << 20
+
+	db, err := Open(opt)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+
+	for i := 0; i < 220; i++ {
+		k := []byte(fmt.Sprintf("ratio-k-%03d", i))
+		v := bytes.Repeat([]byte{byte(i%251 + 1)}, 32<<10)
+		require.NoError(t, db.Update(func(txn *Txn) error {
+			return txn.Set(k, v)
+		}))
+	}
+
+	require.NoError(t, db.wal.checkpoint())
+	cand := db.wal.pickCompactionFile(map[uint32]struct{}{})
+	require.NotNil(t, cand)
+
+	err = db.RunWALGC(0.95)
+	require.ErrorIs(t, err, ErrNoRewrite)
+
+	_, err = os.Stat(walFilePath(dir, cand.fid))
+	require.NoError(t, err)
+}
+
 func countWALFiles(t *testing.T, dir string) int {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -858,11 +905,17 @@ func TestTxLogStreamVersionedFrames(t *testing.T) {
 	require.NoError(t, db.appendTxnCommit(701, 9001))
 
 	var types []WALFrameType
-	require.NoError(t, db.StreamWALFrom(valuePointer{}, func(f WALFrame) error {
+	target, _ := db.WALLSN()
+	ctx, cancel := context.WithCancel(context.Background())
+	err = db.StreamWAL(ctx, WALStreamOptions{Continuous: true}, func(f *WALFrame) error {
 		require.Equal(t, WALFrameVersion, f.Version)
 		types = append(types, f.Type)
+		if !target.IsZero() && !walCursorFromPB(f.Lsn).Less(target) {
+			cancel()
+		}
 		return nil
-	}))
+	})
+	require.ErrorIs(t, err, context.Canceled)
 	require.NotEmpty(t, types)
 	hasIntent := false
 	hasCommit := false
