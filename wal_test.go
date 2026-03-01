@@ -858,7 +858,7 @@ func TestTxLogStreamVersionedFrames(t *testing.T) {
 	require.NoError(t, db.appendTxnCommit(701, 9001))
 
 	var types []WALFrameType
-	require.NoError(t, db.StreamWALFrom(valuePointer{}, func(f WALFrame) error {
+	require.NoError(t, db.StreamWALFrom(WALCursor{}, func(f *WALFrame) error {
 		require.Equal(t, WALFrameVersion, f.Version)
 		types = append(types, f.Type)
 		return nil

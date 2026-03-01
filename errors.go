@@ -121,4 +121,10 @@ var (
 	// ErrWALModeMismatch is returned when the requested WAL mode differs from
 	// the one stored on disk.
 	ErrWALModeMismatch = stderrors.New("WAL mode mismatch")
+
+	// ErrReadOnlyReplica is returned when a user write is attempted on a replica role.
+	ErrReadOnlyReplica = stderrors.New("writes are not allowed in replica role")
+
+	// ErrPrimaryRoleApply is returned when replication apply is attempted on a primary role.
+	ErrPrimaryRoleApply = stderrors.New("replication apply requires replica role")
 )

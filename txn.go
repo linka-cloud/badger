@@ -447,6 +447,8 @@ func (txn *Txn) modify(e *Entry) error {
 	switch {
 	case !txn.update:
 		return ErrReadOnlyTxn
+	case txn.db.replication.isReplica():
+		return ErrReadOnlyReplica
 	case txn.discarded:
 		return ErrDiscardedTxn
 	case len(e.Key) == 0:
@@ -967,6 +969,10 @@ func (db *DB) newTransaction(update, isManaged bool) *Txn {
 		// DB is read-only, force read-only transaction.
 		update = false
 	}
+	if db.replication.isReplica() && update {
+		// Replica role forbids user write transactions.
+		update = false
+	}
 
 	var id uint64
 	if update {
@@ -1017,6 +1023,9 @@ func (db *DB) Update(fn func(txn *Txn) error) error {
 	}
 	if db.opt.managedTxns {
 		panic("Update can only be used with managedDB=false.")
+	}
+	if db.replication.isReplica() {
+		return ErrReadOnlyReplica
 	}
 	txn := db.NewTransaction(true)
 	defer txn.Discard()

@@ -21,7 +21,7 @@ import (
 const walFileExt = ".wal"
 const walSafePointFile = "WAL-SAFEPOINT"
 
-var walCheckpointKey = append(append([]byte{}, badgerPrefix...), []byte("wal-checkpoint")...)
+var walCheckpointKey = []byte("!badger!wal-checkpoint")
 
 type wal struct {
 	db *DB
@@ -714,6 +714,15 @@ func (l *wal) setReplicationSafeLSN(vp valuePointer) {
 		l.replicationSafeLSN = vp
 	}
 	l.mu.Unlock()
+}
+
+func (l *wal) replicationSafeLSNValue() valuePointer {
+	if !l.enabled() {
+		return valuePointer{}
+	}
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.replicationSafeLSN
 }
 
 func (l *wal) publishLSNMetricsLocked() {

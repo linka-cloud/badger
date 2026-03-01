@@ -1,0 +1,37 @@
+/*
+ * SPDX-FileCopyrightText: © 2017-2025 Istari Digital, Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+syntax = "proto3";
+
+package badgerpb4;
+
+option go_package = "github.com/dgraph-io/badger/v4/pb";
+
+message WALCursor {
+  uint32 fid = 1;
+  uint32 offset = 2;
+  uint32 len = 3;
+}
+
+message WALFrame {
+  enum Type {
+    UNKNOWN = 0;
+    ENTRY = 1;
+    TXN_INTENT = 2;
+    TXN_COMMIT = 3;
+    CHECKPOINT = 4;
+  }
+
+  uint32 version = 1;
+  Type type = 2;
+  WALCursor lsn = 3;
+  bytes key = 4;
+  bytes value = 5;
+  // Mirrors badgerpb4.KV.meta encoding (single byte payload).
+  bytes meta = 6;
+  // Mirrors badgerpb4.KV.user_meta encoding (single byte payload).
+  bytes user_meta = 7;
+  uint64 expires_at = 8;
+}

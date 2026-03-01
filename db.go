@@ -165,7 +165,8 @@ func (lk *lockedKeys) all() []uint64 {
 type DB struct {
 	testOnlyDBExtensions
 
-	lock sync.RWMutex // Guards list of inmemory tables, not individual reads and writes.
+	lock        sync.RWMutex // Guards list of inmemory tables, not individual reads and writes.
+	replication WALReplication
 
 	dirLockGuard *directoryLockGuard
 	// nil if Dir and ValueDir are the same
@@ -329,6 +330,7 @@ func Open(opt Options) (*DB, error) {
 		bannedNamespaces: &lockedKeys{keys: make(map[uint64]struct{})},
 		threshold:        initVlogThreshold(&opt),
 	}
+	db.replication.init(db)
 
 	db.syncChan = opt.syncChan
 
@@ -788,12 +790,13 @@ func (db *DB) Sync() error {
 	return y.CombineErrors(memtableSyncError, vLogSyncError)
 }
 
-// WALLSN returns the latest durable and applied wal positions.
-func (db *DB) WALLSN() (durable valuePointer, applied valuePointer) {
+// WALLSN returns the latest durable and applied WAL cursors.
+func (db *DB) WALLSN() (durable WALCursor, applied WALCursor) {
 	if !db.opt.EnableWAL {
-		return valuePointer{}, valuePointer{}
+		return WALCursor{}, WALCursor{}
 	}
-	return db.wal.lsn()
+	d, a := db.wal.lsn()
+	return walCursorFromValuePointer(d), walCursorFromValuePointer(a)
 }
 
 func (db *DB) noteManifestDurable() {
@@ -1217,6 +1220,9 @@ func (db *DB) writeRequests(reqs []*request) error {
 }
 
 func (db *DB) sendToWriteCh(entries []*Entry) (*request, error) {
+	if db.replication.isReplica() {
+		return nil, ErrReadOnlyReplica
+	}
 	if db.blockWrites.Load() == 1 {
 		return nil, ErrBlockedWrites
 	}
