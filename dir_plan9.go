@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // directoryLockGuard holds a lock on a directory and a pid file inside.  The pid file isn't part

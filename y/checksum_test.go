@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/stretchr/testify/require"
+	"go.linka.cloud/badger/v4/pb"
 )
 
 func TestCalculateChecksum_CRC32C(t *testing.T) {

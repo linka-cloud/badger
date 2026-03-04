@@ -24,8 +24,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // maxVlogFileSize is the maximum size of the vlog file which can be created. Vlog Offset is of

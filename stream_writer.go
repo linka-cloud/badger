@@ -12,10 +12,10 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/pb"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // StreamWriter is used to write data coming from multiple streams. The streams must not have any

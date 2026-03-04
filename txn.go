@@ -18,8 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/y"
 )
 
 type oracle struct {

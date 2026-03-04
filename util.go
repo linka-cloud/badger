@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 func (s *levelsController) validate() error {

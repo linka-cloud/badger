@@ -16,7 +16,7 @@ fi
 # Run `go list` BEFORE setting GOFLAGS so that the output is in the right
 # format for grep.
 # export packages because the test will run in a sub process.
-export packages=$(go list ./... | grep "github.com/dgraph-io/badger/v4/")
+export packages=$(go list ./... | grep "go.linka.cloud/badger/v4/")
 
 tags="-tags=jemalloc"
 
@@ -67,7 +67,7 @@ manual() {
 
 root() {
 	# Run the normal tests.
-	# go test -timeout=25m -v -race github.com/dgraph-io/badger/v4/...
+	# go test -timeout=25m -v -race go.linka.cloud/badger/v4/...
 
 	echo "==> Running root level tests."
 	go test $tags -v -race -parallel=16 -timeout=25m -failfast $covermode $coverprofile . && write_coverage || return 1

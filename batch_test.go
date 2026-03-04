@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 func TestWriteBatch(t *testing.T) {
@@ -125,7 +125,7 @@ func TestEmptyWriteBatch(t *testing.T) {
 }
 
 // This test ensures we don't panic during flush.
-// See issue: https://github.com/dgraph-io/badger/issues/1394
+// See issue: https://go.linka.cloud/badger/issues/1394
 func TestFlushPanic(t *testing.T) {
 	t.Run("flush after flush", func(t *testing.T) {
 		runBadgerTest(t, nil, func(t *testing.T, db *DB) {

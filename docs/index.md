@@ -8,7 +8,7 @@ database. It is meant to be an efficient alternative to non-Go-based key-value s
 
 ## Changelog
 
-We keep the [repo Changelog](https://github.com/dgraph-io/badger/blob/main/CHANGELOG.md) up to date
+We keep the [repo Changelog](https://go.linka.cloud/badger/blob/main/CHANGELOG.md) up to date
 with each release.
 
 [Quickstart](quickstart.md)

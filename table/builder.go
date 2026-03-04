@@ -17,11 +17,11 @@ import (
 	fbs "github.com/google/flatbuffers/go"
 	"github.com/klauspost/compress/s2"
 
-	"github.com/dgraph-io/badger/v4/fb"
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/fb"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/pb"
+	"go.linka.cloud/badger/v4/y"
 )
 
 const (
@@ -50,8 +50,8 @@ func (h header) Encode() []byte {
 // Decode decodes the header.
 func (h *header) Decode(buf []byte) {
 	// Copy over data from buf into h. Using *h=unsafe.pointer(...) leads to
-	// pointer alignment issues. See https://github.com/dgraph-io/badger/issues/1096
-	// and comment https://github.com/dgraph-io/badger/pull/1097#pullrequestreview-307361714
+	// pointer alignment issues. See https://go.linka.cloud/badger/issues/1096
+	// and comment https://go.linka.cloud/badger/pull/1097#pullrequestreview-307361714
 	copy(((*[headerSize]byte)(unsafe.Pointer(h))[:]), buf[:headerSize])
 }
 

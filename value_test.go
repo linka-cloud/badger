@@ -19,7 +19,7 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 func TestDynamicValueThreshold(t *testing.T) {
@@ -1013,7 +1013,7 @@ func BenchmarkReadWrite(b *testing.B) {
 	}
 }
 
-// Regression test for https://github.com/dgraph-io/badger/issues/817
+// Regression test for https://go.linka.cloud/badger/issues/817
 // This test verifies if fully corrupted memtables are deleted on reopen.
 func TestValueLogTruncate(t *testing.T) {
 	dir, err := os.MkdirTemp("", "badger-test")
@@ -1103,7 +1103,7 @@ func TestValueEntryChecksum(t *testing.T) {
 
 		require.NoError(t, db.Close())
 	})
-	// Regression test for https://github.com/dgraph-io/badger/issues/1049
+	// Regression test for https://go.linka.cloud/badger/issues/1049
 	t.Run("Corruption", func(t *testing.T) {
 		dir, err := os.MkdirTemp("", "badger-test")
 		require.NoError(t, err)

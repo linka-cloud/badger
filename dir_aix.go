@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // AIX flock locks files, not descriptors. So, multiple descriptors cannot

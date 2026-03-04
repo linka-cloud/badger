@@ -8,7 +8,7 @@ package table
 import (
 	"bytes"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // MergeIterator merges multiple iterators.

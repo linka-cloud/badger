@@ -51,4 +51,4 @@ specify how many versions to keep per key via Options.
 ## Benchmarks
 
 We've run comprehensive benchmarks against RocksDB, BoltDB, and LMDB. The benchmarking code with
-detailed logs are in the [badger-bench](https://github.com/dgraph-io/badger-bench) repo.
+detailed logs are in the [badger-bench](https://go.linka.cloud/badger-bench) repo.

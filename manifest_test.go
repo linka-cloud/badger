@@ -17,10 +17,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/pb"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 func TestManifestBasic(t *testing.T) {

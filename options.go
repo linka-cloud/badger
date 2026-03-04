@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // Note: If you add a new option X make sure you also add a WithX method on Options.

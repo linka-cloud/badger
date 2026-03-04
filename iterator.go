@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 type prefetchStatus uint8
@@ -106,7 +106,7 @@ func (item *Item) Value(fn func(val []byte) error) error {
 // returned. Tip: It might make sense to reuse the returned slice as dst argument for the next call.
 //
 // This function is useful in long running iterate/update transactions to avoid a write deadlock.
-// See Github issue: https://github.com/dgraph-io/badger/issues/315
+// See Github issue: https://go.linka.cloud/badger/issues/315
 func (item *Item) ValueCopy(dst []byte) ([]byte, error) {
 	item.wg.Wait()
 	if item.status == prefetched {

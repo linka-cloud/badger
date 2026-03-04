@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 type tableMock struct {
@@ -51,7 +51,7 @@ func TestPickTables(t *testing.T) {
 	within([]byte("abc"), []byte("abb123"), []byte("ad"))
 	within([]byte("abc"), []byte("abc123"), []byte("abd234"))
 	within([]byte("abc"), []byte("abc123"), []byte("abc456"))
-	// Regression test for https://github.com/dgraph-io/badger/issues/992
+	// Regression test for https://go.linka.cloud/badger/issues/992
 	within([]byte{0, 0, 1}, []byte{0}, []byte{0, 0, 1})
 
 	outside("abd", "abe", "ad")
@@ -311,7 +311,7 @@ func TestIteratorReadOnlyWithNoData(t *testing.T) {
 // Benchmark with opt.Prefix set ===
 // goos: linux
 // goarch: amd64
-// pkg: github.com/dgraph-io/badger
+// pkg: go.linka.cloud/badger
 // BenchmarkIteratePrefixSingleKey/Key_lookups-4         	   10000	    365539 ns/op
 // --- BENCH: BenchmarkIteratePrefixSingleKey/Key_lookups-4
 //
@@ -325,12 +325,12 @@ func TestIteratorReadOnlyWithNoData(t *testing.T) {
 //	iterator_test.go:145: Outer b.N: 1
 //
 // PASS
-// ok  	github.com/dgraph-io/badger	41.586s
+// ok  	go.linka.cloud/badger	41.586s
 //
 // Benchmark with NO opt.Prefix set ===
 // goos: linux
 // goarch: amd64
-// pkg: github.com/dgraph-io/badger
+// pkg: go.linka.cloud/badger
 // BenchmarkIteratePrefixSingleKey/Key_lookups-4         	   10000	    460924 ns/op
 // --- BENCH: BenchmarkIteratePrefixSingleKey/Key_lookups-4
 //
@@ -344,7 +344,7 @@ func TestIteratorReadOnlyWithNoData(t *testing.T) {
 //	iterator_test.go:145: Outer b.N: 1
 //
 // PASS
-// ok  	github.com/dgraph-io/badger	41.836s
+// ok  	go.linka.cloud/badger	41.836s
 //
 // Only my laptop there's a 20% improvement in latency with ~80 files.
 func BenchmarkIteratePrefixSingleKey(b *testing.B) {

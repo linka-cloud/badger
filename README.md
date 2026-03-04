@@ -1,11 +1,11 @@
 # BadgerDB
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/dgraph-io/badger/v4.svg)](https://pkg.go.dev/github.com/dgraph-io/badger/v4)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/badger/v4)](https://goreportcard.com/report/github.com/dgraph-io/badger/v4)
-[![Sourcegraph](https://sourcegraph.com/github.com/dgraph-io/badger/-/badge.svg)](https://sourcegraph.com/github.com/dgraph-io/badger?badge)
-[![ci-badger-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml)
-[![ci-badger-bank-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml)
-[![ci-badger-bank-tests-nightly](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests-nightly.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests-nightly.yml)
+[![Go Reference](https://pkg.go.dev/badge/go.linka.cloud/badger/v4.svg)](https://pkg.go.dev/go.linka.cloud/badger/v4)
+[![Go Report Card](https://goreportcard.com/badge/go.linka.cloud/badger/v4)](https://goreportcard.com/report/go.linka.cloud/badger/v4)
+[![Sourcegraph](https://sourcegraph.com/go.linka.cloud/badger/-/badge.svg)](https://sourcegraph.com/go.linka.cloud/badger?badge)
+[![ci-badger-tests](https://go.linka.cloud/badger/actions/workflows/ci-badger-tests.yml/badge.svg)](https://go.linka.cloud/badger/actions/workflows/ci-badger-tests.yml)
+[![ci-badger-bank-tests](https://go.linka.cloud/badger/actions/workflows/ci-badger-bank-tests.yml/badge.svg)](https://go.linka.cloud/badger/actions/workflows/ci-badger-bank-tests.yml)
+[![ci-badger-bank-tests-nightly](https://go.linka.cloud/badger/actions/workflows/ci-badger-bank-tests-nightly.yml/badge.svg)](https://go.linka.cloud/badger/actions/workflows/ci-badger-bank-tests-nightly.yml)
 
 ![Badger mascot](images/diggy-shadow.png)
 
@@ -29,7 +29,7 @@ Please consult the [Changelog] for more detailed information on releases.
 Note: Badger is built with go 1.23 and we refrain from bumping this version to minimize downstream
 effects of those using Badger in applications built with older versions of Go.
 
-[Changelog]: https://github.com/dgraph-io/badger/blob/main/CHANGELOG.md
+[Changelog]: https://go.linka.cloud/badger/blob/main/CHANGELOG.md
 
 ## Table of Contents
 
@@ -58,7 +58,7 @@ To start using Badger, install Go 1.23 or above. Badger v3 and above needs go mo
 project, run the following command
 
 ```sh
-go get github.com/dgraph-io/badger/v4
+go get go.linka.cloud/badger/v4
 ```
 
 This will retrieve the library.
@@ -135,7 +135,7 @@ We have run comprehensive benchmarks against RocksDB, Bolt and LMDB. The benchma
 detailed logs for the benchmarks can be found in the [badger-bench] repo. More explanation,
 including graphs can be found the blog posts (linked above).
 
-[badger-bench]: https://github.com/dgraph-io/badger-bench
+[badger-bench]: https://go.linka.cloud/badger-bench
 
 ## Projects Using Badger
 
@@ -277,6 +277,6 @@ If you're interested in contributing to Badger see [CONTRIBUTING](./CONTRIBUTING
 
 ## Contact
 
-- Please use [Github issues](https://github.com/dgraph-io/badger/issues) for filing bugs.
+- Please use [Github issues](https://go.linka.cloud/badger/issues) for filing bugs.
 - Please use [Discussions](https://github.com/orgs/dgraph-io/discussions) for questions,
   discussions, and feature requests.

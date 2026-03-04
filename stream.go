@@ -15,9 +15,9 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/pb"
+	"go.linka.cloud/badger/v4/y"
 )
 
 const batchSize = 16 << 20 // 16 MB

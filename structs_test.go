@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Regression test for github.com/dgraph-io/badger/pull/1800
+// Regression test for go.linka.cloud/badger/pull/1800
 func TestLargeEncode(t *testing.T) {
 	var headerEnc [maxHeaderSize]byte
 	h := header{math.MaxUint32, math.MaxUint32, math.MaxUint64, math.MaxUint8, math.MaxUint8}

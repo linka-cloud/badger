@@ -13,9 +13,9 @@ This document outlines the steps needed to build and push a new release of Badge
    upgrade process.
 1. Commit and push your changes. Create a PR and have a team member approve it.
 1. Once your "prepare for release branch" is merged into main, on the github
-   [releases page](https://github.com/dgraph-io/badger/releases), create a new draft release.
+   [releases page](https://go.linka.cloud/badger/releases), create a new draft release.
 1. Start the deployment workflow from the
-   [CD workflow page](https://github.com/dgraph-io/badger/actions/workflows/cd-badger.yml).
+   [CD workflow page](https://go.linka.cloud/badger/actions/workflows/cd-badger.yml).
 
    The CD workflow handles the building and copying of release artifacts to the releases area.
 
@@ -34,7 +34,7 @@ This document outlines the steps needed to build and push a new release of Badge
 1. Splash the "go index" cache to ensure that the latest release is available to the public with:
 
    ```sh
-   go list -m github.com/dgraph-io/badger/v4@vX.X.X
+   go list -m go.linka.cloud/badger/v4@vX.X.X
    ```
 
 1. If needed, create a new announcement thread in the

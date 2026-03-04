@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4/y"
 )
 
 // FILE_ATTRIBUTE_TEMPORARY - A file that is being used for temporary storage.
@@ -96,5 +96,5 @@ func (g *directoryLockGuard) release() error {
 }
 
 // Windows doesn't support syncing directories to the file system. See
-// https://github.com/dgraph-io/badger/issues/699#issuecomment-504133587 for more details.
+// https://go.linka.cloud/badger/issues/699#issuecomment-504133587 for more details.
 func syncDir(dir string) error { return nil }

@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/y"
+	"go.linka.cloud/badger/v4"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/y"
 )
 
 var streamCmd = &cobra.Command{

@@ -25,8 +25,8 @@ Please make sure to read and observe our [Code of Conduct](./CODE_OF_CONDUCT.md)
 ### Find a good first topic
 
 You can start by finding an existing issue with the
-[good first issue](https://github.com/dgraph-io/badger/labels/good%20first%20issue) or
-[help wanted](https://github.com/dgraph-io/badger/labels/help%20wanted) labels. These issues are
+[good first issue](https://go.linka.cloud/badger/labels/good%20first%20issue) or
+[help wanted](https://go.linka.cloud/badger/labels/help%20wanted) labels. These issues are
 well suited for new contributors.
 
 ## Setting up your development environment
@@ -38,7 +38,7 @@ well suited for new contributors.
 
 ### Fork the project
 
-- Visit https://github.com/dgraph-io/badger
+- Visit https://go.linka.cloud/badger
 - Click the `Fork` button (top right) to create a fork of the repository
 
 ### Clone the project

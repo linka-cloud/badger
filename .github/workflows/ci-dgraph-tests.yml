@@ -29,7 +29,7 @@ jobs:
         run: go install gotest.tools/gotestsum@latest
       - name: Fetch latest Badger version
         run: |
-          go get github.com/dgraph-io/badger/v4@main
+          go get go.linka.cloud/badger/v4@main
       - name: Set up Node
         uses: actions/setup-node@v5
         with:

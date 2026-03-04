@@ -14,8 +14,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"go.opentelemetry.io/contrib/zpages"
 
-	"github.com/dgraph-io/badger/v4/badger/cmd"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/badger/cmd"
 )
 
 func main() {

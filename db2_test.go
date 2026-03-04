@@ -24,11 +24,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
+	"go.linka.cloud/badger/v4/options"
+	"go.linka.cloud/badger/v4/pb"
+	"go.linka.cloud/badger/v4/table"
+	"go.linka.cloud/badger/v4/y"
 )
 
 func TestTruncateVlogWithClose(t *testing.T) {
@@ -641,7 +641,7 @@ func TestL0GCBug(t *testing.T) {
 	require.NoError(t, db2.Close())
 }
 
-// Regression test for https://github.com/dgraph-io/badger/issues/1126
+// Regression test for https://go.linka.cloud/badger/issues/1126
 //
 // The test has 3 steps
 // Step 1 - Create badger data. It is necessary that the value size is

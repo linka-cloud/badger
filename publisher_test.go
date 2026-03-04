@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/pb"
+	"go.linka.cloud/badger/v4/pb"
 )
 
 // This test will result in deadlock for commits before this.

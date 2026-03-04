@@ -11,13 +11,13 @@
 To start using Badger, run the following command to retrieve the library.
 
 ```sh
-go get github.com/dgraph-io/badger/v4
+go get go.linka.cloud/badger/v4
 ```
 
 Then, install the Badger command line utility into your `$GOBIN` path.
 
 ```sh
-go install github.com/dgraph-io/badger/v4/badger@latest
+go install go.linka.cloud/badger/v4/badger@latest
 ```
 
 ## Opening a database
@@ -40,7 +40,7 @@ package main
 import (
   "log"
 
-  badger "github.com/dgraph-io/badger/v4"
+  badger "go.linka.cloud/badger/v4"
 )
 
 func main() {
