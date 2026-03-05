@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package badgertestreplication;
+
+option go_package = "go.linka.cloud/badger/replication/pb;replicationpb";
+
+import "pb/wal_replication.proto";
+
+service ClusterControl {
+  rpc Election(ElectionRequest) returns (ElectionResponse);
+  rpc Coordinator(CoordinatorRequest) returns (CoordinatorResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc GetNodeState(GetNodeStateRequest) returns (GetNodeStateResponse);
+  rpc Cursor(CursorRequest) returns (CursorResponse);
+  rpc ApplyFrames(stream ApplyFramesRequest) returns (stream ApplyFramesResponse);
+  rpc InstallSnapshot(stream InstallSnapshotRequest) returns (InstallSnapshotResponse);
+}
+
+message MemberMeta {
+  uint64 node_id = 1;
+  string grpc_addr = 2;
+  uint64 epoch = 3;
+  uint64 leader_id = 4;
+}
+
+message GetNodeStateRequest {}
+
+message GetNodeStateResponse {
+  uint64 node_id = 1;
+  uint64 epoch = 2;
+  uint64 leader_id = 3;
+  badgerpb4.WALCursor cursor = 4;
+  string error = 5;
+}
+
+message ElectionRequest {
+  uint64 candidate_id = 1;
+  uint64 epoch = 2;
+  badgerpb4.WALCursor cursor = 3;
+}
+
+message ElectionResponse {
+  bool ack = 1;
+  uint64 responder_id = 2;
+  uint64 responder_epoch = 3;
+}
+
+message CoordinatorRequest {
+  uint64 leader_id = 1;
+  uint64 epoch = 2;
+}
+
+message CoordinatorResponse {
+  bool accepted = 1;
+  uint64 responder_id = 2;
+  uint64 responder_epoch = 3;
+}
+
+message HeartbeatRequest {
+  uint64 leader_id = 1;
+  uint64 epoch = 2;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  uint64 responder_id = 2;
+  uint64 responder_epoch = 3;
+}
+
+message CursorRequest {
+  uint64 leader_id = 1;
+  uint64 epoch = 2;
+}
+
+message CursorResponse {
+  bool accepted = 1;
+  string error = 2;
+  badgerpb4.WALCursor cursor = 3;
+  uint64 responder_id = 4;
+  uint64 responder_epoch = 5;
+}
+
+message ApplyFramesRequest {
+  uint64 leader_id = 1;
+  uint64 epoch = 2;
+  repeated badgerpb4.WALFrame frames = 3;
+}
+
+message ApplyFramesResponse {
+  bool accepted = 1;
+  string error = 2;
+  badgerpb4.WALCursor cursor = 3;
+  uint64 responder_id = 4;
+  uint64 responder_epoch = 5;
+}
+
+message InstallSnapshotRequest {
+  uint64 leader_id = 1;
+  uint64 epoch = 2;
+  bool reset = 3;
+  bytes chunk = 4;
+  bool done = 5;
+  badgerpb4.WALCursor cursor = 6;
+}
+
+message InstallSnapshotResponse {
+  bool accepted = 1;
+  string error = 2;
+  badgerpb4.WALCursor cursor = 3;
+  uint64 responder_id = 4;
+  uint64 responder_epoch = 5;
+}
